@@ -7,7 +7,7 @@ export type GpaType = '4' | '5' | '100';
 
 export type AttendanceStatus = 'حاضر' | 'غائب' | 'متأخر' | 'تم إلغاء الدرس';
 
-export type ScholarshipStatus = 'مستحقة' | 'تم الصرف' | 'موقوفة';
+export type ScholarshipStatus = 'مستحقة' | 'تم الصرف' | 'موقوفة' | 'قيد الانتظار' | 'معلقة';
 
 // 1. جدول الملف الشخصي (Profiles)
 export interface Profile {
@@ -76,7 +76,7 @@ export interface Exam {
 export interface Scholarship {
   id: string;
   user_id: string;
-  month_year: string; // ISO date (e.g. "2026-08-01")
+  month_year?: string; // ISO date (e.g. "2026-08-01")
   amount: number;
   status: ScholarshipStatus;
   disbursement_date?: string; // Exact calculated date (e.g. 2026-08-27)

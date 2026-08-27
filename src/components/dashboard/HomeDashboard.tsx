@@ -41,7 +41,8 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     toggleTaskCompletion, 
     exams,
     recordAttendance,
-    scholarships
+    scholarships,
+    monthlyScholarshipAmount
   } = useData();
 
   // Ticking scholarship timer
@@ -129,7 +130,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               </div>
 
               <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-[#464858] text-[#D99B7F] border border-[#A56F63]/30">
-                1000 ريال
+                {monthlyScholarshipAmount.toLocaleString()} ريال
               </span>
             </div>
 

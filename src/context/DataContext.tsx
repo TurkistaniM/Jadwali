@@ -32,7 +32,11 @@ interface DataContextType {
 
   // Scholarships
   scholarships: Scholarship[];
+  monthlyScholarshipAmount: number;
+  setMonthlyScholarshipAmount: (amount: number) => void;
+  addScholarship: (scholarship: Omit<Scholarship, 'id' | 'user_id' | 'created_at'>) => Promise<boolean>;
   updateScholarshipStatus: (id: string, status: Scholarship['status']) => Promise<boolean>;
+  deleteScholarship: (id: string) => Promise<boolean>;
 
   // Notifications
   notifications: Notification[];
@@ -123,6 +127,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
 
+  const [monthlyScholarshipAmount, setMonthlyScholarshipAmountState] = useState<number>(() => {
+    try {
+      const saved = 
+        (user && localStorage.getItem(`jadwali_sch_amount_${user.id}`)) ||
+        localStorage.getItem('jadwali_sch_amount_global');
+      return saved ? Number(saved) : 990;
+    } catch {
+      return 990;
+    }
+  });
+
   const [notifications, setNotifications] = useState<Notification[]>(() => {
     try {
       const saved = 
@@ -146,6 +161,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem(`jadwali_${key}_global`, JSON.stringify(data));
   }, [user]);
 
+  const setMonthlyScholarshipAmount = (amount: number) => {
+    setMonthlyScholarshipAmountState(amount);
+    if (user) {
+      localStorage.setItem(`jadwali_sch_amount_${user.id}`, amount.toString());
+    }
+    localStorage.setItem('jadwali_sch_amount_global', amount.toString());
+  };
+
   // Load Data for authenticated user
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -155,7 +178,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const userId = user.id;
 
-    // First load from local storage immediately so no empty flash occurs
+    // Load monthly amount
+    const savedAmount = 
+      localStorage.getItem(`jadwali_sch_amount_${userId}`) ||
+      localStorage.getItem('jadwali_sch_amount_global');
+    if (savedAmount) setMonthlyScholarshipAmountState(Number(savedAmount));
+
     const localCoursesStr = 
       localStorage.getItem(`jadwali_courses_${userId}`) ||
       localStorage.getItem(`sp_courses_${userId}`) ||
@@ -181,7 +209,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false })
         ]);
 
-        // إذا أعاد Supabase مواد، نعتمدها ونحدث التخزين المحلي
         if (!crsRes.error && crsRes.data && crsRes.data.length > 0) {
           const mappedCourses: Course[] = crsRes.data.map((c: any) => ({
             ...c,
@@ -190,30 +217,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }));
           setCourses(mappedCourses);
           syncLocal('courses', mappedCourses);
-        } else if (crsRes.data && crsRes.data.length === 0 && localCoursesStr) {
-          // إذا كان Supabase فارغاً لكن التخزين المحلي يحتوي مواد، نقوم بإعادة مزامنة المواد المحلية إلى Supabase
-          const localParsed: Course[] = JSON.parse(localCoursesStr);
-          if (localParsed.length > 0) {
-            for (const c of localParsed) {
-              try {
-                await supabase.from('courses').upsert({
-                  id: c.id,
-                  user_id: userId,
-                  course_name: c.course_name,
-                  instructor_name: c.instructor_name || null,
-                  building: c.building || null,
-                  room: c.room || null,
-                  color_code: c.color_code || '#A56F63',
-                  contact_info: c.contact_info || null,
-                  contact_method: c.contact_method || null,
-                  schedule_days: c.schedule_days || [1, 3],
-                  schedule_time: c.schedule_time || '09:00 - 10:15'
-                });
-              } catch (err) {
-                console.warn('Sync local course to Supabase note:', err);
-              }
-            }
-          }
         }
 
         if (!attRes.error && attRes.data && attRes.data.length > 0) {
@@ -262,15 +265,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       created_at: new Date().toISOString()
     };
 
-    // 1. الحفظ المحلي فوراً
     const updated = [newCourse, ...courses];
     setCourses(updated);
     syncLocal('courses', updated);
 
-    // 2. الحفظ في Supabase
     if (isSupabaseConfigured) {
       try {
-        const { error } = await supabase
+        await supabase
           .from('courses')
           .upsert({
             id: generatedId,
@@ -285,21 +286,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             schedule_days: courseData.schedule_days || [1, 3],
             schedule_time: courseData.schedule_time || '09:00 - 10:15'
           });
-
-        if (error) {
-          console.warn('Supabase upsert note, fallback insert:', error.message);
-          await supabase.from('courses').insert({
-            id: generatedId,
-            user_id: user.id,
-            course_name: courseData.course_name,
-            instructor_name: courseData.instructor_name || null,
-            building: courseData.building || null,
-            room: courseData.room || null,
-            color_code: courseData.color_code || '#A56F63',
-            contact_info: courseData.contact_info || null,
-            contact_method: courseData.contact_method || null,
-          });
-        }
       } catch (err) {
         console.warn('Supabase addCourse catch:', err);
       }
@@ -560,7 +546,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   };
 
-  // Scholarship Actions
+  // Scholarship Actions (مع إمكانية الإضافة والتعديل والحذف)
+  const addScholarship = async (data: Omit<Scholarship, 'id' | 'user_id' | 'created_at'>): Promise<boolean> => {
+    if (!user) return false;
+    const generatedId = getValidUUID();
+
+    const newSch: Scholarship = {
+      ...data,
+      id: generatedId,
+      user_id: user.id,
+      created_at: new Date().toISOString()
+    };
+
+    const updated = [newSch, ...scholarships];
+    setScholarships(updated);
+    syncLocal('scholarships', updated);
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('scholarships').upsert({
+          id: generatedId,
+          user_id: user.id,
+          amount: data.amount,
+          disbursement_date: data.disbursement_date,
+          status: data.status
+        });
+      } catch (err) {
+        console.warn('Supabase addScholarship error:', err);
+      }
+    }
+
+    return true;
+  };
+
   const updateScholarshipStatus = async (id: string, status: Scholarship['status']): Promise<boolean> => {
     if (!user) return false;
     const updated = scholarships.map(s => s.id === id ? { ...s, status } : s);
@@ -572,6 +590,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await supabase.from('scholarships').update({ status }).eq('id', id).eq('user_id', user.id);
       } catch (err) {
         console.warn('Supabase updateScholarshipStatus error:', err);
+      }
+    }
+    return true;
+  };
+
+  const deleteScholarship = async (id: string): Promise<boolean> => {
+    if (!user) return false;
+    const updated = scholarships.filter(s => s.id !== id);
+    setScholarships(updated);
+    syncLocal('scholarships', updated);
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('scholarships').delete().eq('id', id).eq('user_id', user.id);
+      } catch (err) {
+        console.warn('Supabase deleteScholarship error:', err);
       }
     }
     return true;
@@ -654,7 +688,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteExam,
 
         scholarships,
+        monthlyScholarshipAmount,
+        setMonthlyScholarshipAmount,
+        addScholarship,
         updateScholarshipStatus,
+        deleteScholarship,
 
         notifications,
         unreadNotificationCount,
