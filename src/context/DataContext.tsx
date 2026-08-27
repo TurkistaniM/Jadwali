@@ -159,10 +159,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Helper to ensure profile row exists in Supabase before foreign-key writes
+  const ensureProfileInSupabase = async (userId: string, email: string) => {
+    if (!isSupabaseConfigured) return;
+    try {
+      const { data } = await supabase.from('profiles').select('id').eq('id', userId).single();
+      if (!data) {
+        await supabase.from('profiles').upsert({
+          id: userId,
+          full_name: email.split('@')[0] || 'طالب جامعي',
+          email: email
+        });
+      }
+    } catch (e) {
+      console.warn('ensureProfileInSupabase note:', e);
+    }
+  };
+
   // Reset or Load Data strictly when user changes
   const fetchData = useCallback(async () => {
     if (!user) {
-      // تفريغ كافة البيانات من الذاكرة فور تسجيل الخروج
       setCourses([]);
       setAttendance([]);
       setTasks([]);
@@ -177,39 +193,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const userId = user.id;
 
-    // 1. قراءة البيانات المحلية الخاصة بهذا المستخدم حصراً
+    // 1. قراءة البيانات المحلية الحالية الخاصة بهذا المستخدم
     const savedAmount = localStorage.getItem(`jadwali_sch_amount_${userId}`);
     setMonthlyScholarshipAmountState(savedAmount ? Number(savedAmount) : 990);
 
+    let currentLocalCourses: Course[] = [];
     const localCoursesStr = localStorage.getItem(`jadwali_courses_${userId}`);
     if (localCoursesStr) {
       try {
-        setCourses(JSON.parse(localCoursesStr));
-      } catch (e) {
-        setCourses([]);
+        currentLocalCourses = JSON.parse(localCoursesStr);
+        setCourses(currentLocalCourses);
+      } catch {
+        currentLocalCourses = [];
       }
-    } else {
-      setCourses([]);
     }
 
     const localAttStr = localStorage.getItem(`jadwali_attendance_${userId}`);
-    setAttendance(localAttStr ? JSON.parse(localAttStr) : []);
+    if (localAttStr) setAttendance(JSON.parse(localAttStr));
 
     const localTskStr = localStorage.getItem(`jadwali_tasks_${userId}`);
-    setTasks(localTskStr ? JSON.parse(localTskStr) : []);
+    if (localTskStr) setTasks(JSON.parse(localTskStr));
 
     const localExmStr = localStorage.getItem(`jadwali_exams_${userId}`);
-    setExams(localExmStr ? JSON.parse(localExmStr) : []);
+    if (localExmStr) setExams(JSON.parse(localExmStr));
 
     const localSchStr = localStorage.getItem(`jadwali_scholarships_${userId}`);
-    setScholarships(localSchStr ? JSON.parse(localSchStr) : []);
+    if (localSchStr) setScholarships(JSON.parse(localSchStr));
 
     const localNotStr = localStorage.getItem(`jadwali_notifications_${userId}`);
-    setNotifications(localNotStr ? JSON.parse(localNotStr) : []);
+    if (localNotStr) setNotifications(JSON.parse(localNotStr));
 
-    // 2. جلب البيانات من Supabase الخاصة بـ user.id حصراً
+    // 2. جلب ومزامنة البيانات من Supabase
     try {
       if (isSupabaseConfigured) {
+        await ensureProfileInSupabase(userId, user.email);
+
         const [crsRes, attRes, tskRes, exmRes, schRes, notRes] = await Promise.all([
           supabase.from('courses').select('*').eq('user_id', userId),
           supabase.from('attendance').select('*').eq('user_id', userId),
@@ -219,33 +237,53 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false })
         ]);
 
+        // مزامنة المواد: إذا وُجدت مواد في Supabase نأخذها، وإذا لم توجد في Supabase ولكنها موجودة محلياً نقوم برفعها لسحابة Supabase فوراً!
         if (!crsRes.error && crsRes.data) {
-          const mappedCourses: Course[] = crsRes.data.map((c: any) => ({
-            ...c,
-            schedule_days: c.schedule_days || [1, 3],
-            schedule_time: c.schedule_time || '09:00 - 10:15'
-          }));
-          setCourses(mappedCourses);
-          syncLocal('courses', mappedCourses);
+          if (crsRes.data.length > 0) {
+            const mappedCourses: Course[] = crsRes.data.map((c: any) => ({
+              ...c,
+              schedule_days: c.schedule_days || [1, 3],
+              schedule_time: c.schedule_time || '09:00 - 10:15'
+            }));
+            setCourses(mappedCourses);
+            syncLocal('courses', mappedCourses);
+          } else if (currentLocalCourses.length > 0) {
+            // مزامنة المواد المحلية إلى Supabase
+            for (const localC of currentLocalCourses) {
+              await supabase.from('courses').upsert({
+                id: localC.id,
+                user_id: userId,
+                course_name: localC.course_name,
+                instructor_name: localC.instructor_name || null,
+                building: localC.building || null,
+                room: localC.room || null,
+                color_code: localC.color_code || '#A56F63',
+                contact_info: localC.contact_info || null,
+                contact_method: localC.contact_method || null,
+                schedule_days: localC.schedule_days || [1, 3],
+                schedule_time: localC.schedule_time || '09:00 - 10:15'
+              });
+            }
+          }
         }
 
-        if (!attRes.error && attRes.data) {
+        if (!attRes.error && attRes.data && attRes.data.length > 0) {
           setAttendance(attRes.data);
           syncLocal('attendance', attRes.data);
         }
-        if (!tskRes.error && tskRes.data) {
+        if (!tskRes.error && tskRes.data && tskRes.data.length > 0) {
           setTasks(tskRes.data);
           syncLocal('tasks', tskRes.data);
         }
-        if (!exmRes.error && exmRes.data) {
+        if (!exmRes.error && exmRes.data && exmRes.data.length > 0) {
           setExams(exmRes.data);
           syncLocal('exams', exmRes.data);
         }
-        if (!schRes.error && schRes.data) {
+        if (!schRes.error && schRes.data && schRes.data.length > 0) {
           setScholarships(schRes.data);
           syncLocal('scholarships', schRes.data);
         }
-        if (!notRes.error && notRes.data) {
+        if (!notRes.error && notRes.data && notRes.data.length > 0) {
           setNotifications(notRes.data);
           syncLocal('notifications', notRes.data);
         }
@@ -281,7 +319,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured) {
       try {
-        await supabase
+        await ensureProfileInSupabase(user.id, user.email);
+
+        const { error } = await supabase
           .from('courses')
           .upsert({
             id: generatedId,
@@ -296,6 +336,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             schedule_days: courseData.schedule_days || [1, 3],
             schedule_time: courseData.schedule_time || '09:00 - 10:15'
           });
+
+        if (error) {
+          console.warn('Supabase addCourse upsert error:', error.message);
+        }
       } catch (err) {
         console.warn('Supabase addCourse catch:', err);
       }
@@ -375,6 +419,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured) {
       try {
+        await ensureProfileInSupabase(user.id, user.email);
         await supabase.from('attendance').upsert(
           {
             user_id: user.id,
@@ -429,6 +474,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured) {
       try {
+        await ensureProfileInSupabase(user.id, user.email);
         await supabase.from('tasks').upsert({
           id: generatedId,
           user_id: user.id,
@@ -524,6 +570,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured) {
       try {
+        await ensureProfileInSupabase(user.id, user.email);
         await supabase.from('exams').upsert({
           id: generatedId,
           user_id: user.id,
@@ -574,6 +621,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured) {
       try {
+        await ensureProfileInSupabase(user.id, user.email);
         await supabase.from('scholarships').upsert({
           id: generatedId,
           user_id: user.id,
