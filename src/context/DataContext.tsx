@@ -353,32 +353,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         await ensureProfileInSupabase(user.id, user.email);
 
-        const { error } = await supabase
-          .from('courses')
-          .upsert({
-            id: generatedId,
-            user_id: user.id,
-            course_name: courseData.course_name,
-            instructor_name: courseData.instructor_name || null,
-            building: courseData.building || null,
-            room: courseData.room || null,
-            color_code: courseData.color_code || '#A56F63',
-            contact_info: courseData.contact_info || null,
-            contact_method: courseData.contact_method || null,
-            schedule_days: courseData.schedule_days || [1, 3],
-            schedule_time: courseData.schedule_time || '09:00 - 10:15',
-            has_lab: Boolean(courseData.has_lab),
-            lab_day: courseData.lab_day !== undefined ? courseData.lab_day : null,
-            lab_time: courseData.lab_time || null,
-            lab_building: courseData.lab_building || null,
-            lab_room: courseData.lab_room || null
-          });
+        const payload: any = {
+          id: generatedId,
+          user_id: user.id,
+          course_name: courseData.course_name.trim(),
+          instructor_name: courseData.instructor_name?.trim() || null,
+          building: courseData.building?.trim() || null,
+          room: courseData.room?.trim() || null,
+          color_code: courseData.color_code || '#A56F63',
+          contact_info: courseData.contact_info?.trim() || null,
+          contact_method: courseData.contact_method?.trim() || null,
+          schedule_days: courseData.schedule_days || [1, 3],
+          schedule_time: courseData.schedule_time || '09:00 - 10:15',
+          has_lab: Boolean(courseData.has_lab),
+          lab_day: courseData.has_lab && courseData.lab_day !== undefined ? courseData.lab_day : null,
+          lab_time: courseData.has_lab ? courseData.lab_time : null,
+          lab_building: courseData.has_lab ? courseData.lab_building?.trim() || null : null,
+          lab_room: courseData.has_lab ? courseData.lab_room?.trim() || null : null
+        };
+
+        const { error } = await supabase.from('courses').upsert(payload);
 
         if (error) {
-          console.warn('Supabase addCourse error:', error.message);
+          console.warn('Supabase addCourse initial error:', error.message);
+          if (error.message.includes('has_lab') || error.message.includes('column')) {
+            delete payload.has_lab;
+            delete payload.lab_day;
+            delete payload.lab_time;
+            delete payload.lab_building;
+            delete payload.lab_room;
+            const res = await supabase.from('courses').upsert(payload);
+            if (res.error) console.error('Course fallback upsert error:', res.error);
+          }
         }
       } catch (err) {
-        console.warn('Supabase addCourse catch:', err);
+        console.error('Supabase addCourse catch:', err);
       }
     }
 
