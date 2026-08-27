@@ -44,8 +44,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [major, setMajor] = useState('');
   const [gpaType, setGpaType] = useState<GpaType>('5');
   const [gpaValue, setGpaValue] = useState<string>('4.50');
-  const [termStartDate, setTermStartDate] = useState('2026-08-01');
-  const [termEndDate, setTermEndDate] = useState('2026-12-25');
+  const [termStartDate, setTermStartDate] = useState('2026-08-23');
+  const [termEndDate, setTermEndDate] = useState('2026-12-17');
 
   // Forgot password form state
   const [forgotEmail, setForgotEmail] = useState('');

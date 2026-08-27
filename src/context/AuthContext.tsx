@@ -34,6 +34,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_USER_KEY = 'jadwali_auth_active_user';
 
+const DEFAULT_TERM_START = '2026-08-23';
+const DEFAULT_TERM_END = '2026-12-17';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<{ id: string; email: string } | null>(() => {
     try {
@@ -63,6 +66,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  // دالة موحدة لقراءة وتجهيز الملف الشخصي من Supabase
+  const mapSupabaseProfile = (data: any, userId: string, email: string): Profile => {
+    const numericGpa = data.gpa_value !== undefined && data.gpa_value !== null 
+      ? Number(data.gpa_value) 
+      : data.value_gpa !== undefined && data.value_gpa !== null 
+      ? Number(data.value_gpa) 
+      : 0;
+
+    return {
+      id: userId,
+      full_name: data.full_name || email.split('@')[0] || 'طالب جامعي',
+      academic_id: data.academic_id || '',
+      email: data.email || email,
+      university: data.university || '',
+      major: data.major || '',
+      gpa_type: (data.gpa_type as GpaType) || '5',
+      gpa_value: numericGpa,
+      term_start_date: data.term_start_date || DEFAULT_TERM_START,
+      term_end_date: data.term_end_date || DEFAULT_TERM_END,
+      created_at: data.created_at || new Date().toISOString()
+    };
+  };
+
   // مزامنة والتحقق من الجلسة في Supabase مباشرة
   useEffect(() => {
     const checkSupabaseSession = async () => {
@@ -80,13 +106,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .single();
 
           if (profData) {
-            setProfile(profData as Profile);
-            localStorage.setItem(`jadwali_profile_${session.user.id}`, JSON.stringify(profData));
-            if (profData.academic_id) {
-              localStorage.setItem(`jadwali_academic_map_${profData.academic_id}`, authUser.email);
+            const mapped = mapSupabaseProfile(profData, session.user.id, authUser.email);
+            setProfile(mapped);
+            localStorage.setItem(`jadwali_profile_${session.user.id}`, JSON.stringify(mapped));
+            if (mapped.academic_id) {
+              localStorage.setItem(`jadwali_academic_map_${mapped.academic_id}`, authUser.email);
             }
           } else {
-            // إنشاء سجل Profile في قاعدة بيانات Supabase فوراً
             const googleFullName = 
               session.user.user_metadata?.full_name || 
               session.user.user_metadata?.name || 
@@ -102,14 +128,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               major: '',
               gpa_type: '5',
               gpa_value: 0,
-              term_start_date: '',
-              term_end_date: '',
+              term_start_date: DEFAULT_TERM_START,
+              term_end_date: DEFAULT_TERM_END,
               created_at: new Date().toISOString()
             };
 
             setProfile(newProf);
             localStorage.setItem(`jadwali_profile_${session.user.id}`, JSON.stringify(newProf));
 
+            // حفظ في Supabase مع دعم أسماء الأعمدة
             await supabase.from('profiles').upsert({
               id: session.user.id,
               full_name: googleFullName,
@@ -118,9 +145,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               university: null,
               major: null,
               gpa_type: '5',
-              gpa_value: null,
-              term_start_date: null,
-              term_end_date: null
+              term_start_date: DEFAULT_TERM_START,
+              term_end_date: DEFAULT_TERM_END
             });
           }
         }
@@ -145,8 +171,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .single();
 
         if (profData) {
-          setProfile(profData as Profile);
-          localStorage.setItem(`jadwali_profile_${session.user.id}`, JSON.stringify(profData));
+          const mapped = mapSupabaseProfile(profData, session.user.id, authUser.email);
+          setProfile(mapped);
+          localStorage.setItem(`jadwali_profile_${session.user.id}`, JSON.stringify(mapped));
         } else {
           const newProf: Profile = {
             id: session.user.id,
@@ -157,8 +184,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             major: '',
             gpa_type: '5',
             gpa_value: 0,
-            term_start_date: '',
-            term_end_date: '',
+            term_start_date: DEFAULT_TERM_START,
+            term_end_date: DEFAULT_TERM_END,
             created_at: new Date().toISOString()
           };
           setProfile(newProf);
@@ -172,9 +199,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             university: null,
             major: null,
             gpa_type: '5',
-            gpa_value: null,
-            term_start_date: null,
-            term_end_date: null
+            term_start_date: DEFAULT_TERM_START,
+            term_end_date: DEFAULT_TERM_END
           });
         }
       } else if (event === 'SIGNED_OUT') {
@@ -261,7 +287,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         let effectiveProfile: Profile;
         if (profData) {
-          effectiveProfile = profData as Profile;
+          effectiveProfile = mapSupabaseProfile(profData, userId, userEmail);
         } else {
           effectiveProfile = {
             id: userId,
@@ -272,8 +298,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             major: '',
             gpa_type: '5',
             gpa_value: 0,
-            term_start_date: '',
-            term_end_date: '',
+            term_start_date: DEFAULT_TERM_START,
+            term_end_date: DEFAULT_TERM_END,
             created_at: new Date().toISOString()
           };
 
@@ -285,9 +311,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             university: null,
             major: null,
             gpa_type: '5',
-            gpa_value: null,
-            term_start_date: null,
-            term_end_date: null
+            term_start_date: DEFAULT_TERM_START,
+            term_end_date: DEFAULT_TERM_END
           });
         }
 
@@ -350,10 +375,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         major: data.major?.trim() || '',
         gpa_type: data.gpa_type || '5',
         gpa_value: Number(data.gpa_value) || 0,
-        term_start_date: data.term_start_date || '',
-        term_end_date: data.term_end_date || '',
+        term_start_date: data.term_start_date || DEFAULT_TERM_START,
+        term_end_date: data.term_end_date || DEFAULT_TERM_END,
         created_at: new Date().toISOString(),
       };
+
+      const gpaNum = Number(data.gpa_value) || null;
 
       await supabase.from('profiles').upsert({
         id: userId,
@@ -363,9 +390,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         university: data.university?.trim() || null,
         major: data.major?.trim() || null,
         gpa_type: data.gpa_type || '5',
-        gpa_value: Number(data.gpa_value) || null,
-        term_start_date: data.term_start_date && data.term_start_date.trim() !== '' ? data.term_start_date.trim() : null,
-        term_end_date: data.term_end_date && data.term_end_date.trim() !== '' ? data.term_end_date.trim() : null
+        gpa_value: gpaNum,
+        term_start_date: data.term_start_date || DEFAULT_TERM_START,
+        term_end_date: data.term_end_date || DEFAULT_TERM_END
       });
 
       const authUser = { id: userId, email: data.email.trim() };
@@ -437,8 +464,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         major: '',
         gpa_type: '5' as GpaType,
         gpa_value: 0,
-        term_start_date: '',
-        term_end_date: '',
+        term_start_date: DEFAULT_TERM_START,
+        term_end_date: DEFAULT_TERM_END,
         created_at: new Date().toISOString()
       };
 
@@ -455,8 +482,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem(`jadwali_academic_map_${updated.academic_id}`, updated.email || user.email);
       }
 
-      // حفظ مباشر وصارم في جدول profiles في Supabase مع تحويل التواريخ الفارغة لـ null
-      const payload: any = {
+      const gpaNum = typeof updated.gpa_value === 'number' && !isNaN(updated.gpa_value) ? updated.gpa_value : null;
+
+      const basePayload: any = {
         id: user.id,
         full_name: updated.full_name?.trim() || '',
         academic_id: updated.academic_id?.trim() || null,
@@ -464,21 +492,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         university: updated.university?.trim() || null,
         major: updated.major?.trim() || null,
         gpa_type: updated.gpa_type || '5',
-        gpa_value: typeof updated.gpa_value === 'number' && !isNaN(updated.gpa_value) ? updated.gpa_value : null,
-        term_start_date: updated.term_start_date && updated.term_start_date.trim() !== '' ? updated.term_start_date.trim() : null,
-        term_end_date: updated.term_end_date && updated.term_end_date.trim() !== '' ? updated.term_end_date.trim() : null
+        term_start_date: updated.term_start_date?.trim() || DEFAULT_TERM_START,
+        term_end_date: updated.term_end_date?.trim() || DEFAULT_TERM_END
       };
 
-      const { error: upsertError } = await supabase
+      // 1. محاولة الحفظ بـ gpa_value
+      let { error: err1 } = await supabase
         .from('profiles')
-        .upsert(payload);
+        .upsert({ ...basePayload, gpa_value: gpaNum });
 
-      if (upsertError) {
-        console.error('Supabase profile upsert error:', upsertError);
-        await supabase
+      // 2. إذا كان اسم العمود value_gpa
+      if (err1 && (err1.message.includes('gpa_value') || err1.message.includes('column'))) {
+        const { error: err2 } = await supabase
           .from('profiles')
-          .update(payload)
-          .eq('id', user.id);
+          .upsert({ ...basePayload, value_gpa: gpaNum });
+        if (err2) {
+          console.warn('Upsert fallback note:', err2.message);
+        }
       }
 
       return true;

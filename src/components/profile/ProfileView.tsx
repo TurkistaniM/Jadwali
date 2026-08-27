@@ -16,6 +16,9 @@ import { useAuth } from '../../context/AuthContext';
 import { GpaType } from '../../types/database';
 import { formatGpaDisplay, formatDateArabic } from '../../utils/academicCalculations';
 
+const DEFAULT_TERM_START = '2026-08-23';
+const DEFAULT_TERM_END = '2026-12-17';
+
 export const ProfileView: React.FC = () => {
   const { user, profile, updateProfile } = useAuth();
 
@@ -27,10 +30,12 @@ export const ProfileView: React.FC = () => {
   const [major, setMajor] = useState(profile?.major || '');
   const [gpaType, setGpaType] = useState<GpaType>(profile?.gpa_type || '5');
   const [gpaValue, setGpaValue] = useState<string>(
-    profile?.gpa_value !== undefined && profile?.gpa_value !== null ? profile.gpa_value.toString() : ''
+    profile?.gpa_value !== undefined && profile?.gpa_value !== null && profile.gpa_value > 0
+      ? profile.gpa_value.toString() 
+      : ''
   );
-  const [termStartDate, setTermStartDate] = useState(profile?.term_start_date || '');
-  const [termEndDate, setTermEndDate] = useState(profile?.term_end_date || '');
+  const [termStartDate, setTermStartDate] = useState(profile?.term_start_date || DEFAULT_TERM_START);
+  const [termEndDate, setTermEndDate] = useState(profile?.term_end_date || DEFAULT_TERM_END);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -43,9 +48,13 @@ export const ProfileView: React.FC = () => {
       setUniversity(profile.university || '');
       setMajor(profile.major || '');
       setGpaType(profile.gpa_type || '5');
-      setGpaValue(profile.gpa_value !== undefined && profile.gpa_value !== null ? profile.gpa_value.toString() : '');
-      setTermStartDate(profile.term_start_date || '');
-      setTermEndDate(profile.term_end_date || '');
+      setGpaValue(
+        profile.gpa_value !== undefined && profile.gpa_value !== null && profile.gpa_value > 0
+          ? profile.gpa_value.toString()
+          : ''
+      );
+      setTermStartDate(profile.term_start_date || DEFAULT_TERM_START);
+      setTermEndDate(profile.term_end_date || DEFAULT_TERM_END);
     }
   }, [profile, user]);
 
@@ -57,9 +66,13 @@ export const ProfileView: React.FC = () => {
       setUniversity(profile.university || '');
       setMajor(profile.major || '');
       setGpaType(profile.gpa_type || '5');
-      setGpaValue(profile.gpa_value !== undefined && profile.gpa_value !== null ? profile.gpa_value.toString() : '');
-      setTermStartDate(profile.term_start_date || '');
-      setTermEndDate(profile.term_end_date || '');
+      setGpaValue(
+        profile.gpa_value !== undefined && profile.gpa_value !== null && profile.gpa_value > 0
+          ? profile.gpa_value.toString()
+          : ''
+      );
+      setTermStartDate(profile.term_start_date || DEFAULT_TERM_START);
+      setTermEndDate(profile.term_end_date || DEFAULT_TERM_END);
     }
     setIsEditing(true);
   };
@@ -81,8 +94,8 @@ export const ProfileView: React.FC = () => {
       major: major.trim(),
       gpa_type: gpaType,
       gpa_value: numericGpa,
-      term_start_date: termStartDate.trim(),
-      term_end_date: termEndDate.trim(),
+      term_start_date: termStartDate.trim() || DEFAULT_TERM_START,
+      term_end_date: termEndDate.trim() || DEFAULT_TERM_END,
     });
 
     setIsSaving(false);
@@ -172,7 +185,7 @@ export const ProfileView: React.FC = () => {
           </div>
         </div>
 
-        {/* الفصل الدراسي والتواريخ */}
+        {/* الفصل الدراسي والتواريخ الافتراضية */}
         <div className="bg-[#464858] rounded-2xl border border-[#A56F63]/40 p-5 shadow-lg space-y-3">
           <div className="flex items-center gap-2 text-white font-bold text-sm">
             <Calendar className="w-4 h-4 text-[#D99B7F]" />
@@ -182,18 +195,18 @@ export const ProfileView: React.FC = () => {
           <div className="grid grid-cols-2 gap-3 text-xs pt-1">
             <div className="p-2.5 rounded-xl bg-[#0F3040] border border-[#A56F63]/30">
               <span className="text-slate-400 block text-[10px] mb-1">بداية الفصل الدراسي</span>
-              <b className="text-white font-mono">{profile?.term_start_date ? formatDateArabic(profile.term_start_date) : 'غير محدد'}</b>
+              <b className="text-white font-mono">{formatDateArabic(profile?.term_start_date || DEFAULT_TERM_START)}</b>
             </div>
             <div className="p-2.5 rounded-xl bg-[#0F3040] border border-[#A56F63]/30">
               <span className="text-slate-400 block text-[10px] mb-1">نهاية الفصل الدراسي</span>
-              <b className="text-white font-mono">{profile?.term_end_date ? formatDateArabic(profile.term_end_date) : 'غير محدد'}</b>
+              <b className="text-white font-mono">{formatDateArabic(profile?.term_end_date || DEFAULT_TERM_END)}</b>
             </div>
           </div>
         </div>
 
       </div>
 
-      {/* Edit Form Modal/Drawer */}
+      {/* Edit Form Modal */}
       {isEditing && (
         <div className="bg-[#464858] rounded-3xl border-2 border-[#D99B7F] p-6 sm:p-8 shadow-2xl space-y-6">
           <div className="flex items-center justify-between border-b border-[#A56F63]/40 pb-4">
@@ -203,7 +216,7 @@ export const ProfileView: React.FC = () => {
             </h2>
             <button
               onClick={() => setIsEditing(false)}
-              className="text-xs text-slate-400 hover:text-white transition px-3 py-1.5 rounded-xl bg-[#0F3040]"
+              className="text-xs text-slate-400 hover:text-white transition px-3 py-1.5 rounded-xl bg-[#0F3040] cursor-pointer"
             >
               إلغاء
             </button>
