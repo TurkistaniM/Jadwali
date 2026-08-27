@@ -105,7 +105,7 @@ export const CoursesView: React.FC = () => {
     setRoom('');
     setColorCode('#A56F63');
     setContactInfo('');
-    setContactMethod('البريد الإلكتروني');
+    setContactMethod('');
     
     // Default 2-day schedule: الاثنين والأربعاء (ساعة و15 دقيقة)
     const initialDays = [1, 3];
@@ -576,53 +576,55 @@ export const CoursesView: React.FC = () => {
                 />
               </div>
 
-              {/* NEW: Smart Presets & Days Selector */}
-              <div className="p-3.5 rounded-2xl bg-[#0F3040]/70 border border-[#A56F63]/30 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-white flex items-center gap-1.5">
+              {/* خيارات الأيام الأكاديمية المعتمدة */}
+              <div className="p-4 rounded-2xl bg-[#0F3040]/80 border border-[#A56F63]/40 space-y-3">
+                <label className="text-xs font-bold text-white flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
                     <Calendar className="w-4 h-4 text-[#D99B7F]" />
                     <span>أيام المحاضرة الأسبوعية *</span>
-                  </label>
+                  </span>
+                  <span className="text-[10px] text-[#D99B7F] font-bold">
+                    {scheduleDays.length >= 3 ? 'مدة المحاضرة: 50 دقيقة' : 'مدة المحاضرة: ساعة و15 دقيقة'}
+                  </span>
+                </label>
 
-                  {/* Smart Academic Presets with Auto Duration */}
-                  <div className="flex items-center gap-1 text-[10px]">
-                    <button
-                      type="button"
-                      onClick={() => setPreset([0, 1, 2])}
-                      className="px-2 py-1 rounded-lg bg-[#464858] hover:bg-[#A56F63] text-slate-200 transition font-bold"
-                      title="المدة الافتراضية: 50 دقيقة"
-                    >
-                      أحد/اثنين/ثلاثاء (50 دقيقة)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreset([1, 3])}
-                      className="px-2 py-1 rounded-lg bg-[#464858] hover:bg-[#A56F63] text-slate-200 transition font-bold"
-                      title="المدة الافتراضية: ساعة و15 دقيقة"
-                    >
-                      اثنين/أربعاء (1:15 س)
-                    </button>
-                  </div>
-                </div>
+                {/* خياري التوزيع الأسبوعي المعتمد في الجامعات */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setPreset([0, 2, 4])}
+                    className={`p-3 rounded-2xl border text-xs font-bold transition flex items-center justify-between gap-2 cursor-pointer ${
+                      scheduleDays.length === 3 && scheduleDays.includes(0) && scheduleDays.includes(2) && scheduleDays.includes(4)
+                        ? 'bg-[#A56F63] border-[#D99B7F] text-white shadow-lg ring-2 ring-[#D99B7F]/50'
+                        : 'bg-[#464858] border-[#A56F63]/30 text-slate-200 hover:bg-[#464858]/80'
+                    }`}
+                  >
+                    <div className="text-right">
+                      <p className="font-bold text-sm text-white">أحد - ثلاثاء - خميس</p>
+                      <p className="text-[10px] text-slate-300 font-normal">3 أيام في الأسبوع (50 دقيقة)</p>
+                    </div>
+                    {scheduleDays.length === 3 && scheduleDays.includes(0) && scheduleDays.includes(2) && scheduleDays.includes(4) && (
+                      <span className="text-sm">✓</span>
+                    )}
+                  </button>
 
-                <div className="grid grid-cols-5 gap-1.5">
-                  {WEEK_DAYS.map((day) => {
-                    const isSelected = scheduleDays.includes(day.id);
-                    return (
-                      <button
-                        key={day.id}
-                        type="button"
-                        onClick={() => toggleDay(day.id)}
-                        className={`py-2 rounded-xl text-xs font-bold border transition ${
-                          isSelected
-                            ? 'bg-[#A56F63] border-[#D99B7F] text-white shadow-md'
-                            : 'bg-[#464858] border-[#A56F63]/30 text-slate-300 hover:text-white'
-                        }`}
-                      >
-                        {day.label}
-                      </button>
-                    );
-                  })}
+                  <button
+                    type="button"
+                    onClick={() => setPreset([1, 3])}
+                    className={`p-3 rounded-2xl border text-xs font-bold transition flex items-center justify-between gap-2 cursor-pointer ${
+                      scheduleDays.length === 2 && scheduleDays.includes(1) && scheduleDays.includes(3)
+                        ? 'bg-[#A56F63] border-[#D99B7F] text-white shadow-lg ring-2 ring-[#D99B7F]/50'
+                        : 'bg-[#464858] border-[#A56F63]/30 text-slate-200 hover:bg-[#464858]/80'
+                    }`}
+                  >
+                    <div className="text-right">
+                      <p className="font-bold text-sm text-white">اثنين - أربعاء</p>
+                      <p className="text-[10px] text-slate-300 font-normal">يومان في الأسبوع (ساعة و15 د)</p>
+                    </div>
+                    {scheduleDays.length === 2 && scheduleDays.includes(1) && scheduleDays.includes(3) && (
+                      <span className="text-sm">✓</span>
+                    )}
+                  </button>
                 </div>
               </div>
 
@@ -700,7 +702,7 @@ export const CoursesView: React.FC = () => {
                     type="text"
                     value={contactMethod}
                     onChange={(e) => setContactMethod(e.target.value)}
-                    placeholder="البريد الإلكتروني / الساعات المكتبية"
+                    placeholder="مثال: واتساب، الساعات المكتبية، بلاك بورد"
                     className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden"
                   />
                 </div>
