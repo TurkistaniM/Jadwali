@@ -5,16 +5,15 @@
 
 export type GpaType = '4' | '5' | '100';
 
-export type AttendanceStatus = 'حاضر' | 'غائب' | 'متأخر' | 'تم إلغاء الدرس';
+export type AttendanceStatus = 'حاضر' | 'غائب' | 'متأخر' | 'تم إلغاء الدرس' | 'present' | 'absent' | 'late' | 'cancelled';
 
-export type ScholarshipStatus = 'مستحقة' | 'تم الصرف' | 'موقوفة' | 'قيد الانتظار' | 'معلقة';
+export type ScholarshipStatus = 'مستحقة' | 'تم الصرف' | 'موقوفة' | 'paid' | 'pending' | 'cancelled';
 
 // 1. جدول الملف الشخصي (Profiles)
 export interface Profile {
   id: string; // UUID references auth.users
   full_name: string;
   academic_id: string; // Unique
-  email?: string;      // University Email
   university: string;
   major: string;
   gpa_type: GpaType;
@@ -37,10 +36,10 @@ export interface Course {
   contact_method?: string | null;
   created_at: string;
   schedule_days?: number[]; // [0: Sunday, 1: Monday, 2: Tuesday, 3: Wednesday, 4: Thursday]
-  schedule_time?: string;   // e.g. "09:00 - 10:15"
+  schedule_time?: string;   // e.g. "09:00 - 10:30"
   has_lab?: boolean;
-  lab_day?: number | null;  // [0: Sunday, 1: Monday, 2: Tuesday, 3: Wednesday, 4: Thursday]
-  lab_time?: string | null; // e.g. "13:00 - 14:50"
+  lab_day?: number | null;
+  lab_time?: string | null;
   lab_building?: string | null;
   lab_room?: string | null;
 }
@@ -52,7 +51,7 @@ export interface Attendance {
   course_id: string;
   session_date: string; // ISO date string (YYYY-MM-DD)
   status: AttendanceStatus;
-  created_at: string;
+  created_at?: string;
 }
 
 // 4. جدول المهام (Tasks)
@@ -61,7 +60,8 @@ export interface Task {
   user_id: string;
   course_id?: string | null;
   title: string;
-  due_date?: string | null; // ISO timestamp
+  due_date?: string | null; // ISO timestamp or YYYY-MM-DD
+  date_due?: string | null; // DB alias
   is_important: boolean;
   is_completed: boolean;
   created_at: string;
@@ -73,7 +73,8 @@ export interface Exam {
   user_id: string;
   course_id: string;
   title: string;
-  exam_date: string; // ISO timestamp
+  exam_date: string; // ISO timestamp or YYYY-MM-DD
+  date_exam?: string | null; // DB alias
   location?: string | null;
   created_at: string;
 }
@@ -82,7 +83,7 @@ export interface Exam {
 export interface Scholarship {
   id: string;
   user_id: string;
-  month_year?: string; // ISO date (e.g. "2026-08-01")
+  month_year: string; // ISO date (e.g. "2026-08-01")
   amount: number;
   status: ScholarshipStatus;
   disbursement_date?: string; // Exact calculated date (e.g. 2026-08-27)
@@ -96,7 +97,7 @@ export interface Notification {
   title: string;
   message: string;
   is_read: boolean;
-  type?: 'exam' | 'absence' | 'scholarship' | 'system';
+  type?: 'exam' | 'absence' | 'scholarship' | 'system' | string;
   created_at: string;
 }
 

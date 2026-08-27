@@ -1,7 +1,40 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Course, Attendance, Task, Exam, Scholarship, Notification, AttendanceStatus } from '../types/database';
+import { Course, Attendance, Task, Exam, Scholarship, Notification, AttendanceStatus, ScholarshipStatus } from '../types/database';
 import { useAuth } from './AuthContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+
+// Status mappers between UI (Arabic) and Database (English/Arabic)
+export const toUiAttendanceStatus = (status?: string): AttendanceStatus => {
+  if (!status) return 'حاضر';
+  if (status === 'present') return 'حاضر';
+  if (status === 'absent') return 'غائب';
+  if (status === 'late') return 'متأخر';
+  if (status === 'cancelled' || status === 'canceled') return 'تم إلغاء الدرس';
+  return status as AttendanceStatus;
+};
+
+export const toDbAttendanceStatus = (status: AttendanceStatus): string => {
+  if (status === 'حاضر') return 'present';
+  if (status === 'غائب') return 'absent';
+  if (status === 'متأخر') return 'late';
+  if (status === 'تم إلغاء الدرس') return 'cancelled';
+  return status;
+};
+
+export const toUiScholarshipStatus = (status?: string): ScholarshipStatus => {
+  if (!status) return 'تم الصرف';
+  if (status === 'paid') return 'تم الصرف';
+  if (status === 'pending') return 'مستحقة';
+  if (status === 'cancelled') return 'موقوفة';
+  return status as ScholarshipStatus;
+};
+
+export const toDbScholarshipStatus = (status: ScholarshipStatus): string => {
+  if (status === 'تم الصرف') return 'paid';
+  if (status === 'مستحقة') return 'pending';
+  if (status === 'موقوفة') return 'cancelled';
+  return status;
+};
 
 interface DataContextType {
   // Courses
@@ -32,11 +65,7 @@ interface DataContextType {
 
   // Scholarships
   scholarships: Scholarship[];
-  monthlyScholarshipAmount: number;
-  setMonthlyScholarshipAmount: (amount: number) => void;
-  addScholarship: (scholarship: Omit<Scholarship, 'id' | 'user_id' | 'created_at'>) => Promise<boolean>;
   updateScholarshipStatus: (id: string, status: Scholarship['status']) => Promise<boolean>;
-  deleteScholarship: (id: string) => Promise<boolean>;
 
   // Notifications
   notifications: Notification[];
@@ -53,6 +82,7 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
+// Generate Valid UUID helper
 function getValidUUID(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     try {
@@ -69,112 +99,40 @@ function getValidUUID(): string {
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-
-  // 1. Initial State strictly scoped to user.id
-  const [courses, setCourses] = useState<Course[]>(() => {
-    try {
-      if (!user) return [];
-      const saved = localStorage.getItem(`jadwali_courses_${user.id}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [attendance, setAttendance] = useState<Attendance[]>(() => {
-    try {
-      if (!user) return [];
-      const saved = localStorage.getItem(`jadwali_attendance_${user.id}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    try {
-      if (!user) return [];
-      const saved = localStorage.getItem(`jadwali_tasks_${user.id}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [exams, setExams] = useState<Exam[]>(() => {
-    try {
-      if (!user) return [];
-      const saved = localStorage.getItem(`jadwali_exams_${user.id}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [scholarships, setScholarships] = useState<Scholarship[]>(() => {
-    try {
-      if (!user) return [];
-      const saved = localStorage.getItem(`jadwali_scholarships_${user.id}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [monthlyScholarshipAmount, setMonthlyScholarshipAmountState] = useState<number>(() => {
-    try {
-      if (!user) return 990;
-      const saved = localStorage.getItem(`jadwali_sch_amount_${user.id}`);
-      return saved ? Number(saved) : 990;
-    } catch {
-      return 990;
-    }
-  });
-
-  const [notifications, setNotifications] = useState<Notification[]>(() => {
-    try {
-      if (!user) return [];
-      const saved = localStorage.getItem(`jadwali_notifications_${user.id}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [attendance, setAttendance] = useState<Attendance[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [exams, setExams] = useState<Exam[]>([]);
+  const [scholarships, setScholarships] = useState<Scholarship[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoadingData, setIsLoadingData] = useState<boolean>(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
+  // Local storage persistence helper
   const syncLocal = useCallback((key: string, data: any) => {
-    if (user) {
+    if (!user) return;
+    try {
       localStorage.setItem(`jadwali_${key}_${user.id}`, JSON.stringify(data));
+      localStorage.setItem(`sp_${key}_${user.id}`, JSON.stringify(data));
+    } catch (e) {
+      console.warn(`Local storage sync failed for ${key}:`, e);
     }
   }, [user]);
 
-  const setMonthlyScholarshipAmount = (amount: number) => {
-    setMonthlyScholarshipAmountState(amount);
-    if (user) {
-      localStorage.setItem(`jadwali_sch_amount_${user.id}`, amount.toString());
-    }
-  };
-
-  // Helper to ensure profile exists in Supabase
-  const ensureProfileInSupabase = async (userId: string, email: string) => {
-    if (!isSupabaseConfigured) return;
-    try {
-      const { data } = await supabase.from('profiles').select('id').eq('id', userId).single();
-      if (!data) {
-        await supabase.from('profiles').upsert({
-          id: userId,
-          full_name: email.split('@')[0] || 'طالب جامعي',
-          email: email
-        });
+  const getLocal = useCallback((key: string): any[] | null => {
+    if (!user) return null;
+    const raw = localStorage.getItem(`jadwali_${key}_${user.id}`) || localStorage.getItem(`sp_${key}_${user.id}`);
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
       }
-    } catch (e) {
-      console.warn('ensureProfileInSupabase note:', e);
     }
-  };
+    return null;
+  }, [user]);
 
-  // Load and merge data with zero wiping of local records
+  // Load Data for authenticated user with robust per-entity loading & fallback
   const fetchData = useCallback(async () => {
     if (!user) {
       setCourses([]);
@@ -191,42 +149,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const userId = user.id;
 
-    // Load local storage first
-    const savedAmount = localStorage.getItem(`jadwali_sch_amount_${userId}`);
-    setMonthlyScholarshipAmountState(savedAmount ? Number(savedAmount) : 990);
-
-    let localCoursesList: Course[] = [];
-    const localCoursesStr = localStorage.getItem(`jadwali_courses_${userId}`);
-    if (localCoursesStr) {
-      try {
-        localCoursesList = JSON.parse(localCoursesStr);
-        setCourses(localCoursesList);
-      } catch {
-        localCoursesList = [];
-      }
-    }
-
-    const localAttStr = localStorage.getItem(`jadwali_attendance_${userId}`);
-    if (localAttStr) setAttendance(JSON.parse(localAttStr));
-
-    const localTskStr = localStorage.getItem(`jadwali_tasks_${userId}`);
-    if (localTskStr) setTasks(JSON.parse(localTskStr));
-
-    const localExmStr = localStorage.getItem(`jadwali_exams_${userId}`);
-    if (localExmStr) setExams(JSON.parse(localExmStr));
-
-    const localSchStr = localStorage.getItem(`jadwali_scholarships_${userId}`);
-    if (localSchStr) setScholarships(JSON.parse(localSchStr));
-
-    const localNotStr = localStorage.getItem(`jadwali_notifications_${userId}`);
-    if (localNotStr) setNotifications(JSON.parse(localNotStr));
-
-    // Fetch from Supabase and merge
     try {
       if (isSupabaseConfigured) {
-        await ensureProfileInSupabase(userId, user.email);
-
-        const [crsRes, attRes, tskRes, exmRes, schRes, notRes] = await Promise.all([
+        // Query each table with individual error handling
+        const [crsRes, attRes, tskRes, exmRes, schRes, notRes] = await Promise.allSettled([
           supabase.from('courses').select('*').eq('user_id', userId),
           supabase.from('attendance').select('*').eq('user_id', userId),
           supabase.from('tasks').select('*').eq('user_id', userId),
@@ -235,181 +161,170 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false })
         ]);
 
-        if (!crsRes.error && crsRes.data) {
-          if (crsRes.data.length > 0) {
-            const mappedCourses: Course[] = crsRes.data.map((c: any) => ({
-              ...c,
-              schedule_days: c.schedule_days || [1, 3],
-              schedule_time: c.schedule_time || '09:00 - 10:15',
-              has_lab: Boolean(c.has_lab),
-              lab_day: c.lab_day !== undefined ? c.lab_day : null,
-              lab_time: c.lab_time || null,
-              lab_building: c.lab_building || null,
-              lab_room: c.lab_room || null
-            }));
-
-            // دمج المواد السحابية مع أي مواد مضافة محلياً لمنع حذف أي مادة
-            setCourses(prev => {
-              const map = new Map<string, Course>();
-              mappedCourses.forEach(c => map.set(c.id, c));
-              prev.forEach(c => {
-                if (!map.has(c.id)) map.set(c.id, c);
-              });
-              const merged = Array.from(map.values());
-              syncLocal('courses', merged);
-              return merged;
-            });
-          } else if (localCoursesList.length > 0) {
-            // إذا كانت السحابة فارغة ولكن يوجد مواد محلية، نقوم برفعها للسحابة فوراً
-            for (const localC of localCoursesList) {
-              try {
-                await supabase.from('courses').upsert({
-                  id: localC.id,
-                  user_id: userId,
-                  course_name: localC.course_name,
-                  instructor_name: localC.instructor_name || null,
-                  building: localC.building || null,
-                  room: localC.room || null,
-                  color_code: localC.color_code || '#A56F63',
-                  contact_info: localC.contact_info || null,
-                  contact_method: localC.contact_method || null,
-                  schedule_days: localC.schedule_days || [1, 3],
-                  schedule_time: localC.schedule_time || '09:00 - 10:15',
-                  has_lab: localC.has_lab || false,
-                  lab_day: localC.lab_day !== undefined ? localC.lab_day : null,
-                  lab_time: localC.lab_time || null,
-                  lab_building: localC.lab_building || null,
-                  lab_room: localC.lab_room || null
-                });
-              } catch (e) {
-                console.warn('Sync course to Supabase note:', e);
-              }
-            }
-          }
+        // 1. Courses
+        if (crsRes.status === 'fulfilled' && !crsRes.value.error && crsRes.value.data) {
+          setCourses(crsRes.value.data);
+          syncLocal('courses', crsRes.value.data);
+        } else {
+          const cached = getLocal('courses');
+          if (cached) setCourses(cached);
         }
 
-        if (!attRes.error && attRes.data && attRes.data.length > 0) {
-          setAttendance(attRes.data);
-          syncLocal('attendance', attRes.data);
+        // 2. Attendance (map status to UI Arabic)
+        if (attRes.status === 'fulfilled' && !attRes.value.error && attRes.value.data) {
+          const mapped = attRes.value.data.map((item: any) => ({
+            ...item,
+            status: toUiAttendanceStatus(item.status)
+          }));
+          setAttendance(mapped);
+          syncLocal('attendance', mapped);
+        } else {
+          const cached = getLocal('attendance');
+          if (cached) setAttendance(cached);
         }
-        if (!tskRes.error && tskRes.data && tskRes.data.length > 0) {
-          setTasks(tskRes.data);
-          syncLocal('tasks', tskRes.data);
+
+        // 3. Tasks (support date_due and due_date)
+        if (tskRes.status === 'fulfilled' && !tskRes.value.error && tskRes.value.data) {
+          const mapped = tskRes.value.data.map((item: any) => ({
+            ...item,
+            due_date: item.due_date || item.date_due || null
+          }));
+          setTasks(mapped);
+          syncLocal('tasks', mapped);
+        } else {
+          const cached = getLocal('tasks');
+          if (cached) setTasks(cached);
         }
-        if (!exmRes.error && exmRes.data && exmRes.data.length > 0) {
-          setExams(exmRes.data);
-          syncLocal('exams', exmRes.data);
+
+        // 4. Exams (support date_exam and exam_date)
+        if (exmRes.status === 'fulfilled' && !exmRes.value.error && exmRes.value.data) {
+          const mapped = exmRes.value.data.map((item: any) => ({
+            ...item,
+            exam_date: item.exam_date || item.date_exam || ''
+          }));
+          setExams(mapped);
+          syncLocal('exams', mapped);
+        } else {
+          const cached = getLocal('exams');
+          if (cached) setExams(cached);
         }
-        if (!schRes.error && schRes.data && schRes.data.length > 0) {
-          setScholarships(schRes.data);
-          syncLocal('scholarships', schRes.data);
+
+        // 5. Scholarships (support month_year and map status)
+        if (schRes.status === 'fulfilled' && !schRes.value.error && schRes.value.data) {
+          const mapped = schRes.value.data.map((item: any) => ({
+            ...item,
+            status: toUiScholarshipStatus(item.status)
+          }));
+          setScholarships(mapped);
+          syncLocal('scholarships', mapped);
+        } else {
+          const cached = getLocal('scholarships');
+          if (cached) setScholarships(cached);
         }
-        if (!notRes.error && notRes.data && notRes.data.length > 0) {
-          setNotifications(notRes.data);
-          syncLocal('notifications', notRes.data);
+
+        // 6. Notifications
+        if (notRes.status === 'fulfilled' && !notRes.value.error && notRes.value.data) {
+          setNotifications(notRes.value.data);
+          syncLocal('notifications', notRes.value.data);
+        } else {
+          const cached = getLocal('notifications');
+          if (cached) setNotifications(cached);
         }
+      } else {
+        // Fallback for offline / local-only mode
+        const cachedCourses = getLocal('courses');
+        const cachedAttendance = getLocal('attendance');
+        const cachedTasks = getLocal('tasks');
+        const cachedExams = getLocal('exams');
+        const cachedScholarships = getLocal('scholarships');
+        const cachedNotifications = getLocal('notifications');
+
+        if (cachedCourses) setCourses(cachedCourses);
+        if (cachedAttendance) setAttendance(cachedAttendance);
+        if (cachedTasks) setTasks(cachedTasks);
+        if (cachedExams) setExams(cachedExams);
+        if (cachedScholarships) setScholarships(cachedScholarships);
+        if (cachedNotifications) setNotifications(cachedNotifications);
       }
     } catch (err: any) {
-      console.warn('Supabase fetch note:', err);
+      console.error('Error fetching student data:', err);
+      setServerError('تعذر الاتصال بالسيرفر، جاري استخدام البيانات المحلية');
     } finally {
       setIsLoadingData(false);
     }
-  }, [user, syncLocal]);
+  }, [user, syncLocal, getLocal]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // Course Actions with absolute persistence guarantee
+  // Course Actions
   const addCourse = async (courseData: Omit<Course, 'id' | 'user_id' | 'created_at'>): Promise<boolean> => {
     if (!user) return false;
     const generatedId = getValidUUID();
 
-    const newCourse: Course = {
+    let newCourse: Course = {
       ...courseData,
       id: generatedId,
       user_id: user.id,
-      schedule_days: courseData.schedule_days || [1, 3],
-      schedule_time: courseData.schedule_time || '09:00 - 10:15',
-      has_lab: Boolean(courseData.has_lab),
-      lab_day: courseData.lab_day !== undefined ? courseData.lab_day : null,
-      lab_time: courseData.lab_time || null,
-      lab_building: courseData.lab_building || null,
-      lab_room: courseData.lab_room || null,
       created_at: new Date().toISOString()
     };
 
-    // حفظ فوري في الحالة والذاكرة المحلية
-    setCourses(prev => {
-      const next = [newCourse, ...prev.filter(c => c.id !== generatedId)];
-      if (user) {
-        localStorage.setItem(`jadwali_courses_${user.id}`, JSON.stringify(next));
-      }
-      return next;
-    });
-
-    // حفظ فوري في Supabase
     if (isSupabaseConfigured) {
       try {
-        await ensureProfileInSupabase(user.id, user.email);
-
         const payload: any = {
           id: generatedId,
           user_id: user.id,
-          course_name: courseData.course_name.trim(),
-          instructor_name: courseData.instructor_name?.trim() || null,
-          building: courseData.building?.trim() || null,
-          room: courseData.room?.trim() || null,
+          course_name: courseData.course_name,
+          instructor_name: courseData.instructor_name || null,
+          building: courseData.building || null,
+          room: courseData.room || null,
           color_code: courseData.color_code || '#A56F63',
-          contact_info: courseData.contact_info?.trim() || null,
-          contact_method: courseData.contact_method?.trim() || null,
-          schedule_days: courseData.schedule_days || [1, 3],
-          schedule_time: courseData.schedule_time || '09:00 - 10:15',
-          has_lab: Boolean(courseData.has_lab),
-          lab_day: courseData.has_lab && courseData.lab_day !== undefined ? courseData.lab_day : null,
-          lab_time: courseData.has_lab ? courseData.lab_time : null,
-          lab_building: courseData.has_lab ? courseData.lab_building?.trim() || null : null,
-          lab_room: courseData.has_lab ? courseData.lab_room?.trim() || null : null
+          contact_info: courseData.contact_info || null,
+          contact_method: courseData.contact_method || null,
         };
 
-        const { error } = await supabase.from('courses').upsert(payload);
+        if (courseData.schedule_days) payload.schedule_days = courseData.schedule_days;
+        if (courseData.schedule_time) payload.schedule_time = courseData.schedule_time;
+        if (courseData.has_lab !== undefined) payload.has_lab = courseData.has_lab;
+        if (courseData.lab_day !== undefined) payload.lab_day = courseData.lab_day;
+        if (courseData.lab_time !== undefined) payload.lab_time = courseData.lab_time;
+        if (courseData.lab_building !== undefined) payload.lab_building = courseData.lab_building;
+        if (courseData.lab_room !== undefined) payload.lab_room = courseData.lab_room;
+
+        const { data, error } = await supabase
+          .from('courses')
+          .insert(payload)
+          .select()
+          .single();
 
         if (error) {
-          console.warn('Supabase addCourse initial error:', error.message);
-          if (error.message.includes('has_lab') || error.message.includes('column')) {
-            delete payload.has_lab;
-            delete payload.lab_day;
-            delete payload.lab_time;
-            delete payload.lab_building;
-            delete payload.lab_room;
-            const res = await supabase.from('courses').upsert(payload);
-            if (res.error) console.error('Course fallback upsert error:', res.error);
-          }
+          console.error('Supabase addCourse error:', error);
+        } else if (data) {
+          newCourse = { ...newCourse, ...data };
         }
       } catch (err) {
         console.error('Supabase addCourse catch:', err);
       }
     }
 
+    const updated = [newCourse, ...courses];
+    setCourses(updated);
+    syncLocal('courses', updated);
     return true;
   };
 
   const updateCourse = async (id: string, updates: Partial<Course>): Promise<boolean> => {
     if (!user) return false;
-
-    setCourses(prev => {
-      const next = prev.map(c => c.id === id ? { ...c, ...updates } : c);
-      if (user) {
-        localStorage.setItem(`jadwali_courses_${user.id}`, JSON.stringify(next));
-      }
-      return next;
-    });
+    const updated = courses.map(c => c.id === id ? { ...c, ...updates } : c);
+    setCourses(updated);
+    syncLocal('courses', updated);
 
     if (isSupabaseConfigured) {
       try {
         await supabase.from('courses').update(updates).eq('id', id).eq('user_id', user.id);
       } catch (err) {
-        console.warn('Supabase updateCourse catch:', err);
+        console.error('Supabase updateCourse error:', err);
       }
     }
     return true;
@@ -417,14 +332,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteCourse = async (id: string): Promise<boolean> => {
     if (!user) return false;
-
-    setCourses(prev => {
-      const next = prev.filter(c => c.id !== id);
-      if (user) {
-        localStorage.setItem(`jadwali_courses_${user.id}`, JSON.stringify(next));
-      }
-      return next;
-    });
+    const updated = courses.filter(c => c.id !== id);
+    setCourses(updated);
+    syncLocal('courses', updated);
 
     const updatedAtt = attendance.filter(a => a.course_id !== id);
     setAttendance(updatedAtt);
@@ -442,29 +352,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         await supabase.from('courses').delete().eq('id', id).eq('user_id', user.id);
       } catch (err) {
-        console.warn('Supabase deleteCourse catch:', err);
+        console.error('Supabase deleteCourse error:', err);
       }
     }
     return true;
   };
 
-  // Attendance Actions
+  // Attendance Actions (Bidirectional status support)
   const recordAttendance = async (courseId: string, sessionDate: string, status: AttendanceStatus): Promise<boolean> => {
     if (!user) return false;
     
+    const uiStatus = toUiAttendanceStatus(status);
     const existingIndex = attendance.findIndex(a => a.course_id === courseId && a.session_date === sessionDate);
     let updated: Attendance[];
 
     if (existingIndex >= 0) {
       updated = [...attendance];
-      updated[existingIndex] = { ...updated[existingIndex], status };
+      updated[existingIndex] = { ...updated[existingIndex], status: uiStatus };
     } else {
       const newRecord: Attendance = {
         id: getValidUUID(),
         user_id: user.id,
         course_id: courseId,
         session_date: sessionDate,
-        status,
+        status: uiStatus,
         created_at: new Date().toISOString()
       };
       updated = [newRecord, ...attendance];
@@ -475,18 +386,32 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured) {
       try {
-        await ensureProfileInSupabase(user.id, user.email);
-        await supabase.from('attendance').upsert(
+        // Try with mapped DB status ('present', 'absent', etc.) first
+        const dbStatus = toDbAttendanceStatus(status);
+        const { error: upsertErr } = await supabase.from('attendance').upsert(
           {
             user_id: user.id,
             course_id: courseId,
             session_date: sessionDate,
-            status
+            status: dbStatus
           },
           { onConflict: 'course_id,session_date' }
         );
+
+        if (upsertErr) {
+          // Fallback: try raw Arabic status if constraint in DB is in Arabic
+          await supabase.from('attendance').upsert(
+            {
+              user_id: user.id,
+              course_id: courseId,
+              session_date: sessionDate,
+              status: uiStatus
+            },
+            { onConflict: 'course_id,session_date' }
+          );
+        }
       } catch (err) {
-        console.warn('Supabase recordAttendance error:', err);
+        console.error('Supabase recordAttendance error:', err);
       }
     }
     return true;
@@ -502,7 +427,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         await supabase.from('attendance').delete().eq('id', id).eq('user_id', user.id);
       } catch (err) {
-        console.warn('Supabase deleteAttendanceRecord error:', err);
+        console.error('Supabase deleteAttendanceRecord error:', err);
       }
     }
     return true;
@@ -512,7 +437,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return attendance.filter(a => a.course_id === courseId);
   };
 
-  // Task Actions
+  // Task Actions (Supports both date_due and due_date)
   const addTask = async (taskData: Omit<Task, 'id' | 'user_id' | 'created_at'>): Promise<boolean> => {
     if (!user) return false;
     const generatedId = getValidUUID();
@@ -524,47 +449,59 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       created_at: new Date().toISOString()
     };
 
-    setTasks(prev => {
-      const next = [newTask, ...prev];
-      if (user) localStorage.setItem(`jadwali_tasks_${user.id}`, JSON.stringify(next));
-      return next;
-    });
-
     if (isSupabaseConfigured) {
       try {
-        await ensureProfileInSupabase(user.id, user.email);
-        await supabase.from('tasks').upsert({
+        // Try with date_due column first
+        const payload: any = {
           id: generatedId,
           user_id: user.id,
           course_id: taskData.course_id || null,
           title: taskData.title,
-          due_date: taskData.due_date || null,
-          is_important: taskData.is_important || false,
-          is_completed: taskData.is_completed || false
-        });
+          is_important: Boolean(taskData.is_important),
+          is_completed: Boolean(taskData.is_completed)
+        };
+
+        if (taskData.due_date) {
+          payload.date_due = taskData.due_date;
+        }
+
+        const { error: insertErr } = await supabase.from('tasks').insert(payload);
+
+        if (insertErr) {
+          // If date_due column does not exist, try with due_date column
+          delete payload.date_due;
+          if (taskData.due_date) payload.due_date = taskData.due_date;
+          const { error: retryErr } = await supabase.from('tasks').insert(payload);
+          if (retryErr) {
+            // Fallback without date column
+            delete payload.due_date;
+            await supabase.from('tasks').insert(payload);
+          }
+        }
       } catch (err) {
-        console.warn('Supabase addTask error:', err);
+        console.error('Supabase addTask error:', err);
       }
     }
 
+    const updated = [newTask, ...tasks];
+    setTasks(updated);
+    syncLocal('tasks', updated);
     return true;
   };
 
   const toggleTaskCompletion = async (taskId: string): Promise<boolean> => {
     if (!user) return false;
-    setTasks(prev => {
-      const next = prev.map(t => t.id === taskId ? { ...t, is_completed: !t.is_completed } : t);
-      if (user) localStorage.setItem(`jadwali_tasks_${user.id}`, JSON.stringify(next));
-      return next;
-    });
+    const updated = tasks.map(t => t.id === taskId ? { ...t, is_completed: !t.is_completed } : t);
+    setTasks(updated);
+    syncLocal('tasks', updated);
 
     if (isSupabaseConfigured) {
-      const task = tasks.find(t => t.id === taskId);
+      const task = updated.find(t => t.id === taskId);
       if (task) {
         try {
-          await supabase.from('tasks').update({ is_completed: !task.is_completed }).eq('id', taskId).eq('user_id', user.id);
+          await supabase.from('tasks').update({ is_completed: task.is_completed }).eq('id', taskId).eq('user_id', user.id);
         } catch (err) {
-          console.warn('Supabase toggleTaskCompletion error:', err);
+          console.error('Supabase toggleTaskCompletion error:', err);
         }
       }
     }
@@ -573,19 +510,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const toggleTaskImportance = async (taskId: string): Promise<boolean> => {
     if (!user) return false;
-    setTasks(prev => {
-      const next = prev.map(t => t.id === taskId ? { ...t, is_important: !t.is_important } : t);
-      if (user) localStorage.setItem(`jadwali_tasks_${user.id}`, JSON.stringify(next));
-      return next;
-    });
+    const updated = tasks.map(t => t.id === taskId ? { ...t, is_important: !t.is_important } : t);
+    setTasks(updated);
+    syncLocal('tasks', updated);
 
     if (isSupabaseConfigured) {
-      const task = tasks.find(t => t.id === taskId);
+      const task = updated.find(t => t.id === taskId);
       if (task) {
         try {
-          await supabase.from('tasks').update({ is_important: !task.is_important }).eq('id', taskId).eq('user_id', user.id);
+          await supabase.from('tasks').update({ is_important: task.is_important }).eq('id', taskId).eq('user_id', user.id);
         } catch (err) {
-          console.warn('Supabase toggleTaskImportance error:', err);
+          console.error('Supabase toggleTaskImportance error:', err);
         }
       }
     }
@@ -594,17 +529,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteTask = async (taskId: string): Promise<boolean> => {
     if (!user) return false;
-    setTasks(prev => {
-      const next = prev.filter(t => t.id !== taskId);
-      if (user) localStorage.setItem(`jadwali_tasks_${user.id}`, JSON.stringify(next));
-      return next;
-    });
+    const updated = tasks.filter(t => t.id !== taskId);
+    setTasks(updated);
+    syncLocal('tasks', updated);
 
     if (isSupabaseConfigured) {
       try {
         await supabase.from('tasks').delete().eq('id', taskId).eq('user_id', user.id);
       } catch (err) {
-        console.warn('Supabase deleteTask error:', err);
+        console.error('Supabase deleteTask error:', err);
       }
     }
     return true;
@@ -616,11 +549,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return tasks.filter(t => t.course_id === courseId);
   };
 
-  // Exam Actions
+  // Exam Actions (Supports both date_exam and exam_date)
   const addExam = async (examData: Omit<Exam, 'id' | 'user_id' | 'created_at'>): Promise<boolean> => {
     if (!user) return false;
     const generatedId = getValidUUID();
 
+    // Optimistic local object (fallback if Supabase fails)
     const newExam: Exam = {
       ...examData,
       id: generatedId,
@@ -628,116 +562,103 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       created_at: new Date().toISOString()
     };
 
-    setExams(prev => {
-      const next = [newExam, ...prev];
-      if (user) localStorage.setItem(`jadwali_exams_${user.id}`, JSON.stringify(next));
-      return next;
-    });
-
     if (isSupabaseConfigured) {
       try {
-        await ensureProfileInSupabase(user.id, user.email);
-        await supabase.from('exams').upsert({
+        // Primary: insert using date_exam (the actual DB column name)
+        const payload: any = {
           id: generatedId,
           user_id: user.id,
           course_id: examData.course_id,
           title: examData.title,
-          exam_date: examData.exam_date,
-          location: examData.location || null
-        });
+          location: examData.location || null,
+          date_exam: examData.exam_date
+        };
+
+        const { data: insertedRow, error: insertErr } = await supabase
+          .from('exams')
+          .insert(payload)
+          .select()
+          .single();
+
+        if (!insertErr && insertedRow) {
+          // Map date_exam → exam_date so the UI always reads from exam_date
+          const mapped: Exam = {
+            ...insertedRow,
+            exam_date: insertedRow.exam_date || insertedRow.date_exam || examData.exam_date
+          };
+          const updated = [mapped, ...exams];
+          setExams(updated);
+          syncLocal('exams', updated);
+          return true;
+        }
+
+        if (insertErr) {
+          // Fallback: try with exam_date column name instead
+          delete payload.date_exam;
+          payload.exam_date = examData.exam_date;
+          const { data: retryRow, error: retryErr } = await supabase
+            .from('exams')
+            .insert(payload)
+            .select()
+            .single();
+
+          if (!retryErr && retryRow) {
+            const mapped: Exam = {
+              ...retryRow,
+              exam_date: retryRow.exam_date || retryRow.date_exam || examData.exam_date
+            };
+            const updated = [mapped, ...exams];
+            setExams(updated);
+            syncLocal('exams', updated);
+            return true;
+          }
+          console.error('Supabase addExam both attempts failed:', retryErr);
+        }
       } catch (err) {
-        console.warn('Supabase addExam error:', err);
+        console.error('Supabase addExam error:', err);
       }
     }
 
+    // Fallback: use local object if Supabase failed or not configured
+    const updated = [newExam, ...exams];
+    setExams(updated);
+    syncLocal('exams', updated);
     return true;
   };
 
   const deleteExam = async (id: string): Promise<boolean> => {
     if (!user) return false;
-    setExams(prev => {
-      const next = prev.filter(e => e.id !== id);
-      if (user) localStorage.setItem(`jadwali_exams_${user.id}`, JSON.stringify(next));
-      return next;
-    });
+    const updated = exams.filter(e => e.id !== id);
+    setExams(updated);
+    syncLocal('exams', updated);
 
     if (isSupabaseConfigured) {
       try {
         await supabase.from('exams').delete().eq('id', id).eq('user_id', user.id);
       } catch (err) {
-        console.warn('Supabase deleteExam error:', err);
+        console.error('Supabase deleteExam error:', err);
       }
     }
     return true;
   };
 
-  // Scholarship Actions
-  const addScholarship = async (data: Omit<Scholarship, 'id' | 'user_id' | 'created_at'>): Promise<boolean> => {
-    if (!user) return false;
-    const generatedId = getValidUUID();
-
-    const newSch: Scholarship = {
-      ...data,
-      id: generatedId,
-      user_id: user.id,
-      created_at: new Date().toISOString()
-    };
-
-    setScholarships(prev => {
-      const next = [newSch, ...prev];
-      if (user) localStorage.setItem(`jadwali_scholarships_${user.id}`, JSON.stringify(next));
-      return next;
-    });
-
-    if (isSupabaseConfigured) {
-      try {
-        await ensureProfileInSupabase(user.id, user.email);
-        await supabase.from('scholarships').upsert({
-          id: generatedId,
-          user_id: user.id,
-          amount: data.amount,
-          disbursement_date: data.disbursement_date,
-          status: data.status
-        });
-      } catch (err) {
-        console.warn('Supabase addScholarship error:', err);
-      }
-    }
-
-    return true;
-  };
-
+  // Scholarship Actions (Supports month_year & status mapping)
   const updateScholarshipStatus = async (id: string, status: Scholarship['status']): Promise<boolean> => {
     if (!user) return false;
-    setScholarships(prev => {
-      const next = prev.map(s => s.id === id ? { ...s, status } : s);
-      if (user) localStorage.setItem(`jadwali_scholarships_${user.id}`, JSON.stringify(next));
-      return next;
-    });
+    const uiStatus = toUiScholarshipStatus(status);
+    const updated = scholarships.map(s => s.id === id ? { ...s, status: uiStatus } : s);
+    setScholarships(updated);
+    syncLocal('scholarships', updated);
 
     if (isSupabaseConfigured) {
       try {
-        await supabase.from('scholarships').update({ status }).eq('id', id).eq('user_id', user.id);
+        const dbStatus = toDbScholarshipStatus(status);
+        const { error: updateErr } = await supabase.from('scholarships').update({ status: dbStatus }).eq('id', id).eq('user_id', user.id);
+        if (updateErr) {
+          await supabase.from('scholarships').update({ status: uiStatus }).eq('id', id).eq('user_id', user.id);
+        }
       } catch (err) {
-        console.warn('Supabase updateScholarshipStatus error:', err);
-      }
-    }
-    return true;
-  };
-
-  const deleteScholarship = async (id: string): Promise<boolean> => {
-    if (!user) return false;
-    setScholarships(prev => {
-      const next = prev.filter(s => s.id !== id);
-      if (user) localStorage.setItem(`jadwali_scholarships_${user.id}`, JSON.stringify(next));
-      return next;
-    });
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('scholarships').delete().eq('id', id).eq('user_id', user.id);
-      } catch (err) {
-        console.warn('Supabase deleteScholarship error:', err);
+        console.error('Supabase updateScholarshipStatus error:', err);
       }
     }
     return true;
@@ -746,17 +667,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Notification Actions
   const markNotificationAsRead = async (id: string): Promise<boolean> => {
     if (!user) return false;
-    setNotifications(prev => {
-      const next = prev.map(n => n.id === id ? { ...n, is_read: true } : n);
-      if (user) localStorage.setItem(`jadwali_notifications_${user.id}`, JSON.stringify(next));
-      return next;
-    });
+    const updated = notifications.map(n => n.id === id ? { ...n, is_read: true } : n);
+    setNotifications(updated);
+    syncLocal('notifications', updated);
 
     if (isSupabaseConfigured) {
       try {
         await supabase.from('notifications').update({ is_read: true }).eq('id', id).eq('user_id', user.id);
       } catch (err) {
-        console.warn('Supabase markNotificationAsRead error:', err);
+        console.error('Supabase markNotificationAsRead error:', err);
       }
     }
     return true;
@@ -764,17 +683,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const markAllNotificationsAsRead = async (): Promise<boolean> => {
     if (!user) return false;
-    setNotifications(prev => {
-      const next = prev.map(n => ({ ...n, is_read: true }));
-      if (user) localStorage.setItem(`jadwali_notifications_${user.id}`, JSON.stringify(next));
-      return next;
-    });
+    const updated = notifications.map(n => ({ ...n, is_read: true }));
+    setNotifications(updated);
+    syncLocal('notifications', updated);
 
     if (isSupabaseConfigured) {
       try {
         await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
       } catch (err) {
-        console.warn('Supabase markAllNotificationsAsRead error:', err);
+        console.error('Supabase markAllNotificationsAsRead error:', err);
       }
     }
     return true;
@@ -782,17 +699,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteNotification = async (id: string): Promise<boolean> => {
     if (!user) return false;
-    setNotifications(prev => {
-      const next = prev.filter(n => n.id !== id);
-      if (user) localStorage.setItem(`jadwali_notifications_${user.id}`, JSON.stringify(next));
-      return next;
-    });
+    const updated = notifications.filter(n => n.id !== id);
+    setNotifications(updated);
+    syncLocal('notifications', updated);
 
     if (isSupabaseConfigured) {
       try {
         await supabase.from('notifications').delete().eq('id', id).eq('user_id', user.id);
       } catch (err) {
-        console.warn('Supabase deleteNotification error:', err);
+        console.error('Supabase deleteNotification error:', err);
       }
     }
     return true;
@@ -826,11 +741,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteExam,
 
         scholarships,
-        monthlyScholarshipAmount,
-        setMonthlyScholarshipAmount,
-        addScholarship,
         updateScholarshipStatus,
-        deleteScholarship,
 
         notifications,
         unreadNotificationCount,
