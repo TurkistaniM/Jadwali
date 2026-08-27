@@ -26,9 +26,11 @@ export const ProfileView: React.FC = () => {
   const [university, setUniversity] = useState(profile?.university || '');
   const [major, setMajor] = useState(profile?.major || '');
   const [gpaType, setGpaType] = useState<GpaType>(profile?.gpa_type || '5');
-  const [gpaValue, setGpaValue] = useState<string>(profile?.gpa_value?.toString() || '4.50');
-  const [termStartDate, setTermStartDate] = useState(profile?.term_start_date || '2026-08-01');
-  const [termEndDate, setTermEndDate] = useState(profile?.term_end_date || '2026-12-25');
+  const [gpaValue, setGpaValue] = useState<string>(
+    profile?.gpa_value !== undefined && profile?.gpa_value !== null ? profile.gpa_value.toString() : ''
+  );
+  const [termStartDate, setTermStartDate] = useState(profile?.term_start_date || '');
+  const [termEndDate, setTermEndDate] = useState(profile?.term_end_date || '');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -41,9 +43,9 @@ export const ProfileView: React.FC = () => {
       setUniversity(profile.university || '');
       setMajor(profile.major || '');
       setGpaType(profile.gpa_type || '5');
-      setGpaValue(profile.gpa_value?.toString() || '4.50');
-      setTermStartDate(profile.term_start_date || '2026-08-01');
-      setTermEndDate(profile.term_end_date || '2026-12-25');
+      setGpaValue(profile.gpa_value !== undefined && profile.gpa_value !== null ? profile.gpa_value.toString() : '');
+      setTermStartDate(profile.term_start_date || '');
+      setTermEndDate(profile.term_end_date || '');
     }
   }, [profile, user]);
 
@@ -55,18 +57,21 @@ export const ProfileView: React.FC = () => {
       setUniversity(profile.university || '');
       setMajor(profile.major || '');
       setGpaType(profile.gpa_type || '5');
-      setGpaValue(profile.gpa_value?.toString() || '4.50');
-      setTermStartDate(profile.term_start_date || '2026-08-01');
-      setTermEndDate(profile.term_end_date || '2026-12-25');
+      setGpaValue(profile.gpa_value !== undefined && profile.gpa_value !== null ? profile.gpa_value.toString() : '');
+      setTermStartDate(profile.term_start_date || '');
+      setTermEndDate(profile.term_end_date || '');
     }
     setIsEditing(true);
   };
 
-  const gpaInfo = profile ? formatGpaDisplay(Number(gpaValue) || profile.gpa_value, gpaType) : null;
+  const parsedNumericGpa = gpaValue.trim() !== '' && !isNaN(Number(gpaValue)) ? Number(gpaValue) : (profile?.gpa_value || 0);
+  const gpaInfo = formatGpaDisplay(parsedNumericGpa, gpaType);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+
+    const numericGpa = gpaValue.trim() !== '' && !isNaN(Number(gpaValue)) ? parseFloat(gpaValue) : 0;
 
     const success = await updateProfile({
       full_name: fullName.trim(),
@@ -75,9 +80,9 @@ export const ProfileView: React.FC = () => {
       university: university.trim(),
       major: major.trim(),
       gpa_type: gpaType,
-      gpa_value: parseFloat(gpaValue) || 4.5,
-      term_start_date: termStartDate,
-      term_end_date: termEndDate,
+      gpa_value: numericGpa,
+      term_start_date: termStartDate.trim(),
+      term_end_date: termEndDate.trim(),
     });
 
     setIsSaving(false);
@@ -95,20 +100,20 @@ export const ProfileView: React.FC = () => {
       <div className="bg-[#464858] rounded-3xl border-2 border-[#A56F63]/40 p-6 sm:p-8 shadow-xl relative overflow-hidden">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
           <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-[#0F3040] to-[#A56F63] border-2 border-[#D99B7F] flex items-center justify-center text-white text-3xl font-black shadow-2xl shrink-0">
-            {profile?.full_name?.charAt(0) || 'ط'}
+            {profile?.full_name?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'ط'}
           </div>
 
           <div className="space-y-2 text-center sm:text-right flex-1 min-w-0">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h1 className="text-2xl font-black text-white">{profile?.full_name || 'طالب جامعي'}</h1>
-                <p className="text-sm text-[#D99B7F] font-semibold mt-0.5">{profile?.major || 'تخصصك الدراسي'}</p>
+                <p className="text-sm text-[#D99B7F] font-semibold mt-0.5">{profile?.major || 'لم يتم تحديد التخصص بعد'}</p>
               </div>
 
               {!isEditing && (
                 <button
                   onClick={openEdit}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0F3040] hover:bg-[#0F3040]/80 text-[#D99B7F] border border-[#A56F63]/40 text-xs font-bold transition shadow"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0F3040] hover:bg-[#0F3040]/80 text-[#D99B7F] border border-[#A56F63]/40 text-xs font-bold transition shadow cursor-pointer"
                 >
                   <Edit3 className="w-4 h-4" />
                   <span>تعديل البيانات الأكاديمية</span>
@@ -117,13 +122,13 @@ export const ProfileView: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-y-1 gap-x-3 text-xs text-slate-300">
-              <span>{profile?.university || 'جامعتك'}</span>
+              <span>{profile?.university || 'لم تحدد الجامعة'}</span>
               <span>•</span>
               <span>الرقم الجامعي: <b className="font-mono text-white">{profile?.academic_id || '---'}</b></span>
               <span>•</span>
               <span className="flex items-center gap-1">
                 <Mail className="w-3.5 h-3.5 text-[#D99B7F]" />
-                <span className="font-mono text-white font-medium">{profile?.email || user?.email || 'لم يتم تسجيل البريد'}</span>
+                <span className="font-mono text-white font-medium">{profile?.email || user?.email || 'لم يتم تسجيل البريد الإلكتروني'}</span>
               </span>
             </div>
 
@@ -138,82 +143,84 @@ export const ProfileView: React.FC = () => {
       </div>
 
       {/* GPA & Term Timeline Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         
-        {/* GPA Meter Card */}
-        <div className="bg-[#464858] p-6 rounded-3xl border border-[#A56F63]/30 shadow-lg space-y-4">
+        {/* المعدل */}
+        <div className="bg-[#464858] rounded-2xl border border-[#A56F63]/40 p-5 shadow-lg space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <Award className="w-5 h-5 text-[#D99B7F]" />
-              <span>المعدل التراكمي ونظام التقييم</span>
-            </h3>
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[#0F3040] text-[#D99B7F]">
-              {gpaInfo?.label}
+            <div className="flex items-center gap-2 text-white font-bold text-sm">
+              <Award className="w-4 h-4 text-[#D99B7F]" />
+              <span>المعدل</span>
+            </div>
+            <span className="text-xs px-2.5 py-1 rounded-lg bg-[#0F3040] text-[#D99B7F] font-bold border border-[#A56F63]/30">
+              {profile?.gpa_type === '100' ? 'نظام مئوي' : `نظام ${profile?.gpa_type || '5'}`}
             </span>
           </div>
 
           <div className="flex items-baseline gap-3">
-            <span className="text-3xl sm:text-4xl font-black text-white">{gpaInfo?.display}</span>
-            <span className="text-xs text-emerald-400 font-bold">مرتبة الشرف ⭐</span>
+            <span className="text-3xl font-black text-white font-mono">
+              {profile?.gpa_value && profile.gpa_value > 0 ? profile.gpa_value.toFixed(2) : 'لم يُحدد'}
+            </span>
+            <span className="text-xs text-slate-300 font-semibold">{gpaInfo.label}</span>
           </div>
 
-          <div className="w-full bg-[#0F3040] h-3 rounded-full overflow-hidden p-0.5 border border-[#A56F63]/30">
+          <div className="w-full bg-[#0F3040] h-2.5 rounded-full overflow-hidden p-0.5 border border-[#A56F63]/30">
             <div 
-              className="h-full bg-gradient-to-r from-[#A56F63] to-[#D99B7F] rounded-full transition-all duration-500"
-              style={{ width: `${gpaInfo?.percentage || 90}%` }}
+              className="bg-gradient-to-l from-[#D99B7F] to-[#A56F63] h-full rounded-full transition-all duration-500"
+              style={{ width: `${gpaInfo.percentage}%` }}
             />
           </div>
-
-          <p className="text-[11px] text-slate-300">
-            المعدل المسجل: {profile?.gpa_type === '5' ? 'نظام الـ 5 نقاط' : profile?.gpa_type === '4' ? 'نظام الـ 4 نقاط' : 'نظام النسبة المئوية %'}
-          </p>
         </div>
 
-        {/* Term Dates Card */}
-        <div className="bg-[#464858] p-6 rounded-3xl border border-[#A56F63]/30 shadow-lg space-y-4">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-[#D99B7F]" />
-            <span>الفترة الزمنية للفصل الدراسي</span>
-          </h3>
-
-          <div className="space-y-3 text-xs text-slate-200">
-            <div className="p-3 rounded-xl bg-[#0F3040]/70 border border-[#A56F63]/30 flex items-center justify-between">
-              <span className="text-slate-400">تاريخ بداية الفصل الدراسي:</span>
-              <span className="font-bold text-white">{formatDateArabic(profile?.term_start_date)}</span>
-            </div>
-
-            <div className="p-3 rounded-xl bg-[#0F3040]/70 border border-[#A56F63]/30 flex items-center justify-between">
-              <span className="text-slate-400">تاريخ نهاية الفصل الدراسي:</span>
-              <span className="font-bold text-white">{formatDateArabic(profile?.term_end_date)}</span>
-            </div>
+        {/* الفصل الدراسي والتواريخ */}
+        <div className="bg-[#464858] rounded-2xl border border-[#A56F63]/40 p-5 shadow-lg space-y-3">
+          <div className="flex items-center gap-2 text-white font-bold text-sm">
+            <Calendar className="w-4 h-4 text-[#D99B7F]" />
+            <span>الفصل الدراسي الحالي</span>
           </div>
 
-          <p className="text-[11px] text-[#D99B7F]">
-            * تعتمد خوارزمية حساب الغياب على تاريخ بداية الفصل الدراسي لحساب المحاضرات المنقضية بدقة.
-          </p>
+          <div className="grid grid-cols-2 gap-3 text-xs pt-1">
+            <div className="p-2.5 rounded-xl bg-[#0F3040] border border-[#A56F63]/30">
+              <span className="text-slate-400 block text-[10px] mb-1">بداية الفصل الدراسي</span>
+              <b className="text-white font-mono">{profile?.term_start_date ? formatDateArabic(profile.term_start_date) : 'غير محدد'}</b>
+            </div>
+            <div className="p-2.5 rounded-xl bg-[#0F3040] border border-[#A56F63]/30">
+              <span className="text-slate-400 block text-[10px] mb-1">نهاية الفصل الدراسي</span>
+              <b className="text-white font-mono">{profile?.term_end_date ? formatDateArabic(profile.term_end_date) : 'غير محدد'}</b>
+            </div>
+          </div>
         </div>
 
       </div>
 
-      {/* Edit Form */}
+      {/* Edit Form Modal/Drawer */}
       {isEditing && (
-        <div className="bg-[#464858] rounded-3xl border-2 border-[#A56F63] p-6 sm:p-8 shadow-2xl space-y-6 animate-scale-up">
-          <h2 className="text-lg font-bold text-[#D99B7F] border-b border-[#A56F63]/30 pb-3">
-            تعديل البيانات الأكاديمية والتواريخ
-          </h2>
+        <div className="bg-[#464858] rounded-3xl border-2 border-[#D99B7F] p-6 sm:p-8 shadow-2xl space-y-6">
+          <div className="flex items-center justify-between border-b border-[#A56F63]/40 pb-4">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Edit3 className="w-5 h-5 text-[#D99B7F]" />
+              <span>تعديل وحفظ بيانات الحساب الأكاديمي</span>
+            </h2>
+            <button
+              onClick={() => setIsEditing(false)}
+              className="text-xs text-slate-400 hover:text-white transition px-3 py-1.5 rounded-xl bg-[#0F3040]"
+            >
+              إلغاء
+            </button>
+          </div>
 
           <form onSubmit={handleSave} className="space-y-4">
             
-            {/* الاسم الكامل والرقم الجامعي */}
+            {/* الاسم والرقم الجامعي */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-200 mb-1">الاسم الكامل</label>
+                <label className="block text-xs font-bold text-slate-200 mb-1">الاسم الكامل للطالب</label>
                 <input
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden"
-                  required
+                  placeholder="اكتب اسمك الكامل"
+                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden focus:border-[#D99B7F]"
                 />
               </div>
 
@@ -223,8 +230,8 @@ export const ProfileView: React.FC = () => {
                   type="text"
                   value={academicId}
                   onChange={(e) => setAcademicId(e.target.value)}
-                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden"
-                  required
+                  placeholder="مثال: 2360558"
+                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden focus:border-[#D99B7F]"
                 />
               </div>
             </div>
@@ -239,8 +246,7 @@ export const ProfileView: React.FC = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="student@stu.kau.edu.sa"
                   dir="ltr"
-                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden font-mono text-left"
-                  required
+                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden font-mono text-left focus:border-[#D99B7F]"
                 />
               </div>
 
@@ -250,22 +256,22 @@ export const ProfileView: React.FC = () => {
                   type="text"
                   value={university}
                   onChange={(e) => setUniversity(e.target.value)}
-                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden"
-                  required
+                  placeholder="مثال: جامعة الملك عبدالعزيز"
+                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden focus:border-[#D99B7F]"
                 />
               </div>
             </div>
 
             {/* التخصص ونظام المعدل */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-200 mb-1">التخصص</label>
+                <label className="block text-xs font-bold text-slate-200 mb-1">التخصص الدراسي</label>
                 <input
                   type="text"
                   value={major}
                   onChange={(e) => setMajor(e.target.value)}
-                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden"
-                  required
+                  placeholder="مثال: علوم الحاسب"
+                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden focus:border-[#D99B7F]"
                 />
               </div>
 
@@ -274,28 +280,33 @@ export const ProfileView: React.FC = () => {
                 <select
                   value={gpaType}
                   onChange={(e) => setGpaType(e.target.value as GpaType)}
-                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden"
+                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden focus:border-[#D99B7F]"
                 >
-                  <option value="5">من 5.00</option>
-                  <option value="4">من 4.00</option>
-                  <option value="100">مئوي % (100)</option>
+                  <option value="5">سلم المعدل من 5.00 (الجامعات السعودية)</option>
+                  <option value="4">سلم المعدل من 4.00</option>
+                  <option value="100">نظام النسبة المئوية (100%)</option>
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-200 mb-1">المعدل التراكمي</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={gpaValue}
-                  onChange={(e) => setGpaValue(e.target.value)}
-                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden"
-                  required
-                />
               </div>
             </div>
 
-            {/* تواريخ الفصل الدراسي */}
+            {/* قيمة المعدل التراكمي */}
+            <div>
+              <label className="block text-xs font-bold text-slate-200 mb-1">
+                المعدل التراكمي
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max={gpaType === '100' ? 100 : gpaType === '4' ? 4 : 5}
+                value={gpaValue}
+                onChange={(e) => setGpaValue(e.target.value)}
+                placeholder="أدخل معدلك التراكمي (مثال: 4.75)"
+                className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden focus:border-[#D99B7F]"
+              />
+            </div>
+
+            {/* تواريخ بداية ونهاية الفصل الدراسي */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-200 mb-1">تاريخ بداية الفصل الدراسي</label>
@@ -303,8 +314,7 @@ export const ProfileView: React.FC = () => {
                   type="date"
                   value={termStartDate}
                   onChange={(e) => setTermStartDate(e.target.value)}
-                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden"
-                  required
+                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden focus:border-[#D99B7F]"
                 />
               </div>
 
@@ -314,29 +324,29 @@ export const ProfileView: React.FC = () => {
                   type="date"
                   value={termEndDate}
                   onChange={(e) => setTermEndDate(e.target.value)}
-                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden"
-                  required
+                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden focus:border-[#D99B7F]"
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#A56F63]/30">
+            <div className="pt-3 flex items-center justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setIsEditing(false)}
-                className="px-5 py-2.5 rounded-xl text-xs text-slate-300 hover:text-white"
+                className="px-5 py-2.5 rounded-xl bg-[#0F3040] text-slate-300 text-xs font-bold hover:bg-[#0F3040]/80 transition cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={isSaving}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#A56F63] hover:bg-[#8E584D] text-white text-xs font-bold shadow-lg transition disabled:opacity-50"
+                className="px-6 py-2.5 rounded-xl bg-[#A56F63] hover:bg-[#8E584D] text-white text-xs font-bold transition shadow-lg flex items-center gap-2 active:scale-98 disabled:opacity-50 cursor-pointer"
               >
                 <Save className="w-4 h-4" />
-                <span>{isSaving ? 'جاري الحفظ...' : 'حفظ البيانات'}</span>
+                <span>{isSaving ? 'جاري الحفظ...' : 'حفظ البيانات وتثبيتها'}</span>
               </button>
             </div>
+
           </form>
         </div>
       )}

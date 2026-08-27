@@ -63,30 +63,39 @@ export function calculateElapsedAbsenceStats(
   });
 
   const totalElapsedSessions = presentCount + absentCount + lateCount;
-  
-  // نسبة الغياب المباشرة
-  const absencePercentage = totalElapsedSessions > 0 
-    ? Math.round((absentCount / totalElapsedSessions) * 100) 
-    : 0;
 
-  // كل 3 تأخيرات تعادل غياباً واحداً وفق اللائحة الجامعية
-  const effectiveAbsences = absentCount + Math.floor(lateCount / 3);
-  const effectiveAbsencePercentage = totalElapsedSessions > 0
-    ? Math.min(100, Math.round((effectiveAbsences / totalElapsedSessions) * 100))
-    : 0;
+  if (totalElapsedSessions === 0) {
+    return {
+      totalElapsedSessions: 0,
+      presentCount: 0,
+      absentCount: 0,
+      lateCount: 0,
+      cancelledCount,
+      futureOrIgnoredCount,
+      absencePercentage: 0,
+      effectiveAbsencePercentage: 0,
+      warningLevel: 'safe',
+      warningMessage: 'لا توجد محاضرات منقضية مسجلة بعد'
+    };
+  }
+
+  // في اللائحة الجامعية: كل 3 تأخيرات تعادل غياب محاضرة واحدة (أو ثلث غياب لكل تأخير)
+  const effectiveAbsentUnits = absentCount + (lateCount / 3);
+  const absencePercentage = Math.round((absentCount / totalElapsedSessions) * 100);
+  const effectiveAbsencePercentage = Math.min(100, Math.round((effectiveAbsentUnits / totalElapsedSessions) * 100));
 
   let warningLevel: 'safe' | 'warning' | 'danger' | 'dn_risk' = 'safe';
-  let warningMessage = 'نسبة الحضور ممتازة وفي النطاق الآمن';
+  let warningMessage = 'نسبة حضور ممتازة وضمن النطاق الآمن 🟢';
 
-  if (effectiveAbsencePercentage >= 20) {
+  if (effectiveAbsencePercentage >= 25) {
     warningLevel = 'dn_risk';
-    warningMessage = 'تجاوزت نسبة الغياب المسموحة (خطر الحرمان DN)!';
-  } else if (effectiveAbsencePercentage >= 15) {
+    warningMessage = 'تجاوزت الحد المسموح (25%) - معرض للحرمان الأكاديمي 🛑';
+  } else if (effectiveAbsencePercentage >= 20) {
     warningLevel = 'danger';
-    warningMessage = 'إنذار غياب: اقتربت من حاجز الحرمان الأكاديمي';
+    warningMessage = 'إنذار ثانٍ حرج (20%) - محاضرة واحدة تفصلك عن الحرمان ⚠️';
   } else if (effectiveAbsencePercentage >= 10) {
     warningLevel = 'warning';
-    warningMessage = 'تنبيه: راقب نسبة حضورك لتجنب الإنذارات';
+    warningMessage = 'إنذار أول (10%) - يرجى الانتباه وتجنب الغياب 🟡';
   }
 
   return {
@@ -104,9 +113,9 @@ export function calculateElapsedAbsenceStats(
 }
 
 /**
- * دالة حساب موعد صرف المكافأة الجامعية بالتقويم المالي السعودي
- * القاعدة:
- * - موعد الصرف الأساسي: يوم 27 ميلادي.
+ * خوارزمية عداد المكافأة بالتقويم المالي السعودي
+ * القواعد الصارمة:
+ * - موعد الإيداع الأساسي: يوم 27 من كل شهر ميلادي.
  * - إذا وافق يوم 27 الجمعة -> يقدم للخميس 26.
  * - إذا وافق يوم 27 السبت -> يؤخر للأحد 28 (أو 29).
  */
@@ -124,19 +133,16 @@ export interface ScholarshipCountdown {
 }
 
 export function getAdjustedScholarshipDate(year: number, monthIndex: number): { date: Date; note: string } {
-  // 27th of target month
   const rawDate = new Date(year, monthIndex, 27, 0, 0, 0);
-  const dayOfWeek = rawDate.getDay(); // 0 = Sunday, 5 = Friday, 6 = Saturday
+  const dayOfWeek = rawDate.getDay();
 
   if (dayOfWeek === 5) {
-    // الجمعة -> تقديم للخميس 26
     const adjusted = new Date(year, monthIndex, 26, 0, 0, 0);
     return {
       date: adjusted,
       note: 'تم تقديم الصرف للخميس 26 لمصادفة يوم 27 يوم الجمعة'
     };
   } else if (dayOfWeek === 6) {
-    // السبت -> تأخير للأحد 28
     const adjusted = new Date(year, monthIndex, 28, 0, 0, 0);
     return {
       date: adjusted,
@@ -156,24 +162,29 @@ export function calculateNextScholarshipCountdown(now = new Date()): Scholarship
 
   let { date: targetDate, note } = getAdjustedScholarshipDate(currentYear, currentMonth);
 
-  // إذا انتهى موعد صرف هذا الشهر، ننتقل للشهر القادم
-  // نعتبر الصرف مستمراً طوال اليوم حتى نهاية اليوم 23:59:59
-  const targetEndOfDay = new Date(targetDate);
-  targetEndOfDay.setHours(23, 59, 59, 999);
+  const endOfTargetDate = new Date(targetDate);
+  endOfTargetDate.setHours(23, 59, 59, 999);
 
-  const isToday = now.toDateString() === targetDate.toDateString();
-
-  if (now > targetEndOfDay) {
-    const nextMonth = (currentMonth + 1) % 12;
-    const nextYear = currentMonth === 11 ? currentYear + 1 : currentYear;
-    const nextCalc = getAdjustedScholarshipDate(nextYear, nextMonth);
-    targetDate = nextCalc.date;
-    note = nextCalc.note;
+  if (now > endOfTargetDate) {
+    let nextMonth = currentMonth + 1;
+    let nextYear = currentYear;
+    if (nextMonth > 11) {
+      nextMonth = 0;
+      nextYear += 1;
+    }
+    const nextTarget = getAdjustedScholarshipDate(nextYear, nextMonth);
+    targetDate = nextTarget.date;
+    note = nextTarget.note;
   }
+
+  const isToday = 
+    now.getFullYear() === targetDate.getFullYear() &&
+    now.getMonth() === targetDate.getMonth() &&
+    now.getDate() === targetDate.getDate();
 
   const diffMs = Math.max(0, targetDate.getTime() - now.getTime());
   const totalSeconds = Math.floor(diffMs / 1000);
-  
+
   const days = Math.floor(totalSeconds / (3600 * 24));
   const hours = Math.floor((totalSeconds % (3600 * 24)) / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -205,9 +216,9 @@ export function calculateNextScholarshipCountdown(now = new Date()): Scholarship
 }
 
 /**
- * تنسيق وعرض المعدل التراكمي
+ * تنسيق وعرض المعدل التراكمي بدون أي قيم افتراضية عشوائية
  */
-export function formatGpaDisplay(value: number, type: GpaType): { display: string; percentage: number; label: string } {
+export function formatGpaDisplay(value?: number | null, type: GpaType = '5'): { display: string; percentage: number; label: string } {
   let max = 5;
   let label = 'من 5.00';
   if (type === '4') {
@@ -218,8 +229,13 @@ export function formatGpaDisplay(value: number, type: GpaType): { display: strin
     label = '% مئوي';
   }
 
-  const percentage = Math.min(100, Math.max(0, (value / max) * 100));
-  const display = type === '100' ? `${value.toFixed(1)}%` : `${value.toFixed(2)} / ${max.toFixed(2)}`;
+  const numericValue = typeof value === 'number' && !isNaN(value) ? value : null;
+  if (numericValue === null || numericValue === 0) {
+    return { display: 'غير محدد', percentage: 0, label };
+  }
+
+  const percentage = Math.min(100, Math.max(0, (numericValue / max) * 100));
+  const display = type === '100' ? `${numericValue.toFixed(1)}%` : `${numericValue.toFixed(2)} / ${max.toFixed(2)}`;
 
   return { display, percentage, label };
 }
@@ -228,7 +244,7 @@ export function formatGpaDisplay(value: number, type: GpaType): { display: strin
  * تحويل التواريخ إلى صيغة عربية لطيفة
  */
 export function formatDateArabic(dateStr?: string | null): string {
-  if (!dateStr) return 'غير محدد';
+  if (!dateStr || dateStr.trim() === '') return 'غير محدد';
   try {
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return dateStr;

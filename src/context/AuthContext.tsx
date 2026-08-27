@@ -10,9 +10,9 @@ export interface SignUpData {
   university: string;
   major: string;
   gpa_type: GpaType;
-  gpa_value: number;
-  term_start_date: string;
-  term_end_date: string;
+  gpa_value?: number | null;
+  term_start_date?: string;
+  term_end_date?: string;
 }
 
 interface AuthContextType {
@@ -34,30 +34,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_USER_KEY = 'jadwali_auth_active_user';
 
-// تنظيف أي مفاتيح قديمة غير معزولة لمنع تسريب البيانات بين المستخدمين
-const cleanupLegacyGlobalStorage = () => {
-  try {
-    const legacyKeys = [
-      'jadwali_courses_global',
-      'jadwali_attendance_global',
-      'jadwali_tasks_global',
-      'jadwali_exams_global',
-      'jadwali_scholarships_global',
-      'jadwali_notifications_global',
-      'jadwali_profile_data',
-      'jadwali_sch_amount_global'
-    ];
-    legacyKeys.forEach(k => localStorage.removeItem(k));
-  } catch (e) {
-    console.warn('Storage cleanup note:', e);
-  }
-};
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  useEffect(() => {
-    cleanupLegacyGlobalStorage();
-  }, []);
-
   const [user, setUser] = useState<{ id: string; email: string } | null>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
@@ -86,7 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // مزامنة والتحقق من الجلسة في Supabase مع عزل أمني صارم 100%
+  // مزامنة والتحقق من الجلسة في Supabase مع الحفاظ الصارم على بيانات الطالب وتجنب أي قيم افتراضية
   useEffect(() => {
     const checkSupabaseSession = async () => {
       if (!isSupabaseConfigured) return;
@@ -110,31 +87,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               localStorage.setItem(`jadwali_academic_map_${profData.academic_id}`, authUser.email);
             }
           } else {
-            // التحقق فقط من الملف الخاص بهذا المستخدم تحديداً
+            // التحقق من وجود ملف محفوظ محلياً لهذا المستخدم
             const saved = localStorage.getItem(`jadwali_profile_${session.user.id}`);
 
             let effectiveProfile: Profile;
             if (saved) {
               effectiveProfile = { ...JSON.parse(saved), id: session.user.id };
             } else {
-              // مستخدم جديد تماماً - لا نأخذ بيانات أي مستخدم سابق
+              // مستخدم جديد تماماً: لا نضع أي قيم افتراضية عشوائية
               const googleFullName = 
                 session.user.user_metadata?.full_name || 
                 session.user.user_metadata?.name || 
                 authUser.email.split('@')[0] || 
-                'طالب جامعي';
+                '';
 
               effectiveProfile = {
                 id: session.user.id,
                 full_name: googleFullName,
                 academic_id: session.user.user_metadata?.academic_id || '',
                 email: authUser.email,
-                university: 'جامعة الملك عبدالعزيز',
-                major: 'علوم الحاسب',
+                university: '',
+                major: '',
                 gpa_type: '5',
-                gpa_value: 4.5,
-                term_start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-                term_end_date: new Date(new Date().getFullYear(), new Date().getMonth() + 4, 25).toISOString().split('T')[0],
+                gpa_value: 0,
+                term_start_date: '',
+                term_end_date: '',
                 created_at: new Date().toISOString()
               };
             }
@@ -145,18 +122,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             try {
               await supabase.from('profiles').upsert(effectiveProfile);
             } catch (e) {
-              console.warn('Sync profile to Supabase note:', e);
+              console.warn('Sync profile note:', e);
             }
           }
         }
       } catch (err) {
-        console.warn('Background Supabase session sync note:', err);
+        console.warn('Background sync note:', err);
       }
     };
 
     checkSupabaseSession();
 
-    // الاستماع لتغييرات المصادقة (دخول جديد، تبديل حساب، أو خروج)
+    // الاستماع لتغييرات المصادقة
     if (isSupabaseConfigured) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_IN' && session?.user) {
@@ -180,15 +157,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             } else {
               const newProf: Profile = {
                 id: session.user.id,
-                full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || authUser.email.split('@')[0],
+                full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || authUser.email.split('@')[0] || '',
                 academic_id: session.user.user_metadata?.academic_id || '',
                 email: authUser.email,
-                university: 'جامعة الملك عبدالعزيز',
-                major: 'علوم الحاسب',
+                university: '',
+                major: '',
                 gpa_type: '5',
-                gpa_value: 4.5,
-                term_start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-                term_end_date: new Date(new Date().getFullYear(), new Date().getMonth() + 4, 25).toISOString().split('T')[0],
+                gpa_value: 0,
+                term_start_date: '',
+                term_end_date: '',
                 created_at: new Date().toISOString()
               };
               setProfile(newProf);
@@ -204,7 +181,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(null);
           setProfile(null);
           localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
-          cleanupLegacyGlobalStorage();
         }
       });
 
@@ -303,15 +279,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             } else {
               effectiveProfile = {
                 id: userId,
-                full_name: data.user.user_metadata?.full_name || userEmail.split('@')[0] || 'طالب جامعي',
+                full_name: data.user.user_metadata?.full_name || userEmail.split('@')[0] || '',
                 academic_id: data.user.user_metadata?.academic_id || cleanIdentifier || '',
                 email: userEmail,
-                university: 'جامعة الملك عبدالعزيز',
-                major: 'علوم الحاسب',
+                university: '',
+                major: '',
                 gpa_type: '5',
-                gpa_value: 4.5,
-                term_start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-                term_end_date: new Date(new Date().getFullYear(), new Date().getMonth() + 4, 25).toISOString().split('T')[0],
+                gpa_value: 0,
+                term_start_date: '',
+                term_end_date: '',
                 created_at: new Date().toISOString()
               };
             }
@@ -398,12 +374,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         full_name: data.full_name.trim(),
         academic_id: data.academic_id.trim(),
         email: data.email.trim(),
-        university: data.university.trim(),
-        major: data.major.trim(),
-        gpa_type: data.gpa_type,
-        gpa_value: Number(data.gpa_value),
-        term_start_date: data.term_start_date,
-        term_end_date: data.term_end_date,
+        university: data.university?.trim() || '',
+        major: data.major?.trim() || '',
+        gpa_type: data.gpa_type || '5',
+        gpa_value: Number(data.gpa_value) || 0,
+        term_start_date: data.term_start_date || '',
+        term_end_date: data.term_end_date || '',
         created_at: new Date().toISOString(),
       };
 
@@ -443,15 +419,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const mockGoogleUser = { id: `google-${Date.now()}`, email: 'student.google@kau.edu.sa' };
         const mockProfile: Profile = {
           id: mockGoogleUser.id,
-          full_name: 'طالب جامعي جديد',
+          full_name: '',
           academic_id: '',
           email: mockGoogleUser.email,
-          university: 'جامعة الملك عبدالعزيز',
-          major: 'علوم الحاسب',
+          university: '',
+          major: '',
           gpa_type: '5',
-          gpa_value: 4.5,
-          term_start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-          term_end_date: new Date(new Date().getFullYear(), new Date().getMonth() + 4, 25).toISOString().split('T')[0],
+          gpa_value: 0,
+          term_start_date: '',
+          term_end_date: '',
           created_at: new Date().toISOString()
         };
         setUser(mockGoogleUser);
@@ -495,19 +471,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setProfile(null);
       localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
-      cleanupLegacyGlobalStorage();
       setIsLoading(false);
     }
   };
 
   const updateProfile = async (updates: Partial<Profile>): Promise<boolean> => {
-    if (!profile || !user) return false;
+    if (!user) return false;
     try {
-      const updated: Profile = {
-        ...profile,
-        ...updates,
+      const currentProfile = profile || {
+        id: user.id,
+        full_name: '',
+        academic_id: '',
+        email: user.email,
+        university: '',
+        major: '',
+        gpa_type: '5' as GpaType,
+        gpa_value: 0,
+        term_start_date: '',
+        term_end_date: '',
+        created_at: new Date().toISOString()
       };
 
+      const updated: Profile = {
+        ...currentProfile,
+        ...updates,
+        id: user.id
+      };
+
+      // 1. الحفظ المحلي الفوري الخاص بالمستخدم
       setProfile(updated);
       localStorage.setItem(`jadwali_profile_${user.id}`, JSON.stringify(updated));
 
@@ -515,27 +506,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem(`jadwali_academic_map_${updated.academic_id}`, updated.email || user.email);
       }
 
-      if (isSupabaseConfigured && (profile.id || user.id)) {
-        const targetId = profile.id || user.id;
-        const profilePayload = {
-          ...updated,
-          id: targetId
+      // 2. الحفظ في Supabase مع تجهيز القيم بشكل آمن
+      if (isSupabaseConfigured) {
+        const payload: any = {
+          id: user.id,
+          full_name: updated.full_name?.trim() || '',
+          academic_id: updated.academic_id?.trim() || null,
+          email: updated.email?.trim() || user.email,
+          university: updated.university?.trim() || null,
+          major: updated.major?.trim() || null,
+          gpa_type: updated.gpa_type || '5',
+          gpa_value: typeof updated.gpa_value === 'number' && !isNaN(updated.gpa_value) ? updated.gpa_value : null,
+          term_start_date: updated.term_start_date?.trim() || null,
+          term_end_date: updated.term_end_date?.trim() || null
         };
-        
-        try {
-          const { error } = await supabase
-            .from('profiles')
-            .upsert(profilePayload);
 
-          if (error) {
-            console.warn('Supabase profile upsert error, trying update:', error.message);
-            await supabase
-              .from('profiles')
-              .update(updates)
-              .eq('id', targetId);
-          }
-        } catch (err) {
-          console.warn('Supabase updateProfile catch:', err);
+        const { error } = await supabase
+          .from('profiles')
+          .upsert(payload);
+
+        if (error) {
+          console.warn('Supabase profile upsert error, trying update:', error.message);
+          await supabase
+            .from('profiles')
+            .update(payload)
+            .eq('id', user.id);
         }
       }
 
@@ -571,7 +566,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         profile,
-        isAuthenticated: Boolean(user && profile),
+        isAuthenticated: Boolean(user),
         isLoading,
         error,
         signIn,
