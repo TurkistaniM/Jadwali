@@ -229,10 +229,10 @@ export const ProfileView: React.FC = () => {
               </div>
             </div>
 
-            {/* البريد الجامعي والجامعة */}
+            {/* البريد الإلكتروني والجامعة */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-200 mb-1">البريد الجامعي</label>
+                <label className="block text-xs font-bold text-slate-200 mb-1">البريد الإلكتروني</label>
                 <input
                   type="email"
                   value={email}

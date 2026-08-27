@@ -23,6 +23,7 @@ interface AuthContextType {
   error: string | null;
   signIn: (identifier: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (data: SignUpData) => Promise<{ success: boolean; error?: string }>;
+  signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   updateProfile: (data: Partial<Profile>) => Promise<boolean>;
   resetPassword: (email: string) => Promise<{ success: boolean; message?: string; error?: string }>;
@@ -56,7 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // مزامنة والتحقق من الجلسة في Supabase في الخلفية
+  // مزامنة والتحقق من الجلسة في Supabase عند التحميل ودعم OAuth
   useEffect(() => {
     const checkSupabaseSession = async () => {
       if (!isSupabaseConfigured) return;
@@ -85,14 +86,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               localStorage.getItem(`jadwali_profile_${session.user.id}`) ||
               localStorage.getItem(LOCAL_STORAGE_PROFILE_KEY);
 
+            let effectiveProfile: Profile;
             if (saved) {
-              const localProf = JSON.parse(saved);
-              setProfile(localProf);
-              try {
-                await supabase.from('profiles').upsert(localProf);
-              } catch (e) {
-                console.warn('Sync profile to Supabase note:', e);
-              }
+              effectiveProfile = { ...JSON.parse(saved), id: session.user.id };
+            } else {
+              // تهيئة ملف افتراضي لمستخدم جوجل أو المستخدم الجديد
+              effectiveProfile = {
+                id: session.user.id,
+                full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || authUser.email.split('@')[0] || 'طالب جامعي',
+                academic_id: session.user.user_metadata?.academic_id || '44500000',
+                email: authUser.email,
+                university: 'جامعة الملك عبدالعزيز',
+                major: 'علوم الحاسب',
+                gpa_type: '5',
+                gpa_value: 4.5,
+                term_start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+                term_end_date: new Date(new Date().getFullYear(), new Date().getMonth() + 4, 25).toISOString().split('T')[0],
+                created_at: new Date().toISOString()
+              };
+            }
+
+            setProfile(effectiveProfile);
+            localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(effectiveProfile));
+            localStorage.setItem(`jadwali_profile_${session.user.id}`, JSON.stringify(effectiveProfile));
+
+            try {
+              await supabase.from('profiles').upsert(effectiveProfile);
+            } catch (e) {
+              console.warn('Sync profile to Supabase note:', e);
             }
           }
         }
@@ -102,6 +123,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     checkSupabaseSession();
+
+    // الاستماع لتغييرات المصادقة (مثل العودة من Google OAuth)
+    if (isSupabaseConfigured) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          const authUser = { id: session.user.id, email: session.user.email || '' };
+          setUser(authUser);
+          localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(authUser));
+
+          const { data: profData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+
+          if (profData) {
+            setProfile(profData as Profile);
+            localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(profData));
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setProfile(null);
+          localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+          localStorage.removeItem(LOCAL_STORAGE_PROFILE_KEY);
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
   }, []);
 
   const signIn = async (identifier: string, password = ''): Promise<{ success: boolean; error?: string }> => {
@@ -113,9 +165,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const isEmail = cleanIdentifier.includes('@');
       let loginEmail = cleanIdentifier;
 
-      // إذا أدخل الطالب الرقم الجامعي، نقوم بربطه بالإيميل
+      // إذا أدخل الطالب الرقم الجامعي، نقوم بربطه بالبريد الإلكتروني
       if (!isEmail) {
-        // 1. البحث في الخريطة المحلية
         const mappedEmail = 
           localStorage.getItem(`jadwali_academic_map_${cleanIdentifier}`) ||
           localStorage.getItem(`jadwali_prof_email_${cleanIdentifier}`);
@@ -123,7 +174,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (mappedEmail) {
           loginEmail = mappedEmail;
         } else if (isSupabaseConfigured) {
-          // 2. محاولة الاستعلام من Supabase عبر دالة RPC
           try {
             const { data: rpcEmail, error: rpcErr } = await supabase
               .rpc('get_email_by_academic_id', { p_academic_id: cleanIdentifier });
@@ -131,7 +181,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (rpcEmail && !rpcErr) {
               loginEmail = rpcEmail;
             } else {
-              // 3. محاولة الاستعلام المباشر من جدول profiles
               const { data: profRow } = await supabase
                 .from('profiles')
                 .select('email')
@@ -149,7 +198,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (isSupabaseConfigured) {
-        // إذا كان لا يزال رقماً ولم يتم العثور على إيميل، ننبه المستخدم بلطف
         if (!loginEmail.includes('@')) {
           const msg = 'لم يتم العثور على بريد مرتبط بهذا الرقم الجامعي. يرجى إدخال بريدك الإلكتروني لتسجيل الدخول';
           setError(msg);
@@ -202,8 +250,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 id: userId,
                 full_name: data.user.user_metadata?.full_name || userEmail.split('@')[0] || 'طالب جامعي',
                 academic_id: data.user.user_metadata?.academic_id || cleanIdentifier || '44100000',
+                email: userEmail,
                 university: 'جامعة الملك عبدالعزيز',
-                major: 'هندسة الحاسب',
+                major: 'علوم الحاسب',
                 gpa_type: '5',
                 gpa_value: 4.5,
                 term_start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
@@ -247,7 +296,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: true };
       }
 
-      const msg = 'الحساب غير مسجل، يرجى إنشاء حساب جديد أو الدخول بالبريد';
+      const msg = 'الحساب غير مسجل، يرجى إنشاء حساب جديد أو الدخول بالبريد الإلكتروني';
       setError(msg);
       setIsLoading(false);
       return { success: false, error: msg };
@@ -296,6 +345,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: userId,
         full_name: data.full_name.trim(),
         academic_id: data.academic_id.trim(),
+        email: data.email.trim(),
         university: data.university.trim(),
         major: data.major.trim(),
         gpa_type: data.gpa_type,
@@ -332,6 +382,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // تسجيل الدخول بواسطة Google OAuth
+  const signInWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      if (!isSupabaseConfigured) {
+        const mockGoogleUser = { id: `google-${Date.now()}`, email: 'student.google@kau.edu.sa' };
+        const mockProfile: Profile = {
+          id: mockGoogleUser.id,
+          full_name: 'طالب جامعي',
+          academic_id: '44501928',
+          email: mockGoogleUser.email,
+          university: 'جامعة الملك عبدالعزيز',
+          major: 'علوم الحاسب',
+          gpa_type: '5',
+          gpa_value: 4.85,
+          term_start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+          term_end_date: new Date(new Date().getFullYear(), new Date().getMonth() + 4, 25).toISOString().split('T')[0],
+          created_at: new Date().toISOString()
+        };
+        setUser(mockGoogleUser);
+        setProfile(mockProfile);
+        localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mockGoogleUser));
+        localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(mockProfile));
+        setIsLoading(false);
+        return { success: true };
+      }
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          }
+        }
+      });
+
+      if (error) throw error;
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || 'تعذر تسجيل الدخول عبر Google، يرجى التأكد من إعدادات المفاتيح';
+      setError(msg);
+      setIsLoading(false);
+      return { success: false, error: msg };
+    }
+  };
+
   const signOut = async () => {
     setIsLoading(true);
     try {
@@ -362,8 +462,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (user) {
         localStorage.setItem(`jadwali_profile_${user.id}`, JSON.stringify(updated));
       }
-      if (updated.academic_id && user) {
-        localStorage.setItem(`jadwali_academic_map_${updated.academic_id}`, user.email);
+      if (updated.academic_id && (updated.email || user?.email)) {
+        localStorage.setItem(`jadwali_academic_map_${updated.academic_id}`, updated.email || user!.email);
       }
 
       if (isSupabaseConfigured && (profile.id || user?.id)) {
@@ -410,7 +510,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       return {
         success: false,
-        error: err?.message || 'تعذر إرسال الرابط، يرجى التأكد من صحة البريد'
+        error: err?.message || 'تعذر إرسال الرابط، يرجى التأكد من صحة البريد الإلكتروني'
       };
     }
   };
@@ -427,6 +527,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         error,
         signIn,
         signUp,
+        signInWithGoogle,
         signOut,
         updateProfile,
         resetPassword,
