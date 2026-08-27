@@ -1,14 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 
-// يدعم كلا التنسيقين: تنسيق Vite وتنسيق Next.js لراحة المستخدم التامة
-const supabaseUrl = 
+// يدعم كافة الصيغ ويزيل أي مسافات أو علامات تنصيص زائدة تلقائياً
+const rawUrl = 
   import.meta.env.VITE_SUPABASE_URL || 
-  (import.meta.env as any).NEXT_PUBLIC_SUPABASE_URL;
+  (import.meta.env as any).NEXT_PUBLIC_SUPABASE_URL ||
+  '';
 
-const supabaseAnonKey = 
+const rawKey = 
   import.meta.env.VITE_SUPABASE_ANON_KEY || 
   (import.meta.env as any).NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  (import.meta.env as any).NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  (import.meta.env as any).NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  '';
+
+const supabaseUrl = rawUrl.trim().replace(/^["']|["']$/g, '');
+const supabaseAnonKey = rawKey.trim().replace(/^["']|["']$/g, '');
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
@@ -19,7 +24,12 @@ export const isSupabaseConfigured = Boolean(
 
 // العميل الأساسي لـ Supabase
 export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+      }
+    })
   : createClient('https://mock-supabase-portal.supabase.co', 'mock-anon-key', {
       auth: {
         persistSession: true,
