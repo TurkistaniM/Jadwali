@@ -1,6 +1,16 @@
 # 🎓 جَدْوَلي | Jadwali
 > **منصة الطالب الجامعي الشاملة** — لتنظيم المقررات، حساب نسب الغياب المنقضية، متابعة المهام والاختبارات، وعدّاد المكافأة الجامعية في مكان واحد.
 
+[![SDAIA Academy](https://img.shields.io/badge/SDAIA%20Academy-GitHub-blue?style=for-the-badge&logo=github)](https://github.com/SDAIAAcademy)
+[![Built with React](https://img.shields.io/badge/Frontend-React%20%2B%20Vite-61dafb?style=for-the-badge&logo=react)](https://react.dev/)
+[![Backend Supabase](https://img.shields.io/badge/Database-Supabase-3ecf8e?style=for-the-badge&logo=supabase)](https://supabase.com/)
+
+---
+
+## 🏛️ شكر وتقدير | Acknowledgement
+تم تطوير هذا المشروع بالاستفادة من برامج ومبادرات **أكاديمية سدايا (SDAIA Academy)** لدعم وتمكين الكفاءات الوطنية في مجالات التقنية والبرمجة والذكاء الاصطناعي.
+- 🔗 **مستودع أكاديمية سدايا على GitHub:** [https://github.com/SDAIAAcademy](https://github.com/SDAIAAcademy)
+
 ---
 
 ## 🌟 نبذة عن المشروع
