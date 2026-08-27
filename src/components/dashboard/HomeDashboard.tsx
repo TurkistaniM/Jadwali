@@ -107,11 +107,11 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             <div className="pt-2 flex flex-wrap items-center gap-3 text-xs text-slate-300">
               <div className="flex items-center gap-1.5 bg-[#0F3040]/60 px-3 py-1.5 rounded-xl border border-[#A56F63]/20">
                 <Calendar className="w-3.5 h-3.5 text-[#D99B7F]" />
-                <span>بداية الترم: <b className="text-white">{profile?.term_start_date || '2026-08-01'}</b></span>
+                <span>بداية الفصل الدراسي: <b className="text-white">{profile?.term_start_date || '2026-08-01'}</b></span>
               </div>
               <div className="flex items-center gap-1.5 bg-[#0F3040]/60 px-3 py-1.5 rounded-xl border border-[#A56F63]/20">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                <span>نهاية الترم: <b className="text-white">{profile?.term_end_date || '2026-12-25'}</b></span>
+                <span>نهاية الفصل الدراسي: <b className="text-white">{profile?.term_end_date || '2026-12-25'}</b></span>
               </div>
             </div>
           </div>

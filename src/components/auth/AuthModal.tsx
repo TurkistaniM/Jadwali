@@ -368,7 +368,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-200 mb-1">
-                    نظام المعدل
+                    المعدل
                   </label>
                   <select
                     value={gpaType}
@@ -383,7 +383,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-200 mb-1">
-                    المعدل التراكمي الحالي
+                    المعدل التراكمي
                   </label>
                   <input
                     type="number"
@@ -404,7 +404,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
                     <label className="block text-[10px] text-slate-300 mb-0.5">
-                      تاريخ بداية الترم:
+                      تاريخ بداية الفصل الدراسي:
                     </label>
                     <input
                       type="date"
@@ -415,7 +415,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </div>
                   <div>
                     <label className="block text-[10px] text-slate-300 mb-0.5">
-                      تاريخ نهاية الترم:
+                      تاريخ نهاية الفصل الدراسي:
                     </label>
                     <input
                       type="date"

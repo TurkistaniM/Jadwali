@@ -9,18 +9,20 @@ import {
   CheckCircle2, 
   Edit3, 
   Sparkles,
-  Save
+  Save,
+  Mail
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { GpaType } from '../../types/database';
 import { formatGpaDisplay, formatDateArabic } from '../../utils/academicCalculations';
 
 export const ProfileView: React.FC = () => {
-  const { profile, updateProfile } = useAuth();
+  const { user, profile, updateProfile } = useAuth();
 
   const [isEditing, setIsEditing] = useState(false);
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [academicId, setAcademicId] = useState(profile?.academic_id || '');
+  const [email, setEmail] = useState(profile?.email || user?.email || '');
   const [university, setUniversity] = useState(profile?.university || '');
   const [major, setMajor] = useState(profile?.major || '');
   const [gpaType, setGpaType] = useState<GpaType>(profile?.gpa_type || '5');
@@ -35,6 +37,7 @@ export const ProfileView: React.FC = () => {
     if (profile) {
       setFullName(profile.full_name || '');
       setAcademicId(profile.academic_id || '');
+      setEmail(profile.email || user?.email || '');
       setUniversity(profile.university || '');
       setMajor(profile.major || '');
       setGpaType(profile.gpa_type || '5');
@@ -42,12 +45,13 @@ export const ProfileView: React.FC = () => {
       setTermStartDate(profile.term_start_date || '2026-08-01');
       setTermEndDate(profile.term_end_date || '2026-12-25');
     }
-  }, [profile]);
+  }, [profile, user]);
 
   const openEdit = () => {
     if (profile) {
       setFullName(profile.full_name || '');
       setAcademicId(profile.academic_id || '');
+      setEmail(profile.email || user?.email || '');
       setUniversity(profile.university || '');
       setMajor(profile.major || '');
       setGpaType(profile.gpa_type || '5');
@@ -67,6 +71,7 @@ export const ProfileView: React.FC = () => {
     const success = await updateProfile({
       full_name: fullName.trim(),
       academic_id: academicId.trim(),
+      email: email.trim(),
       university: university.trim(),
       major: major.trim(),
       gpa_type: gpaType,
@@ -111,9 +116,16 @@ export const ProfileView: React.FC = () => {
               )}
             </div>
 
-            <p className="text-xs text-slate-300">
-              {profile?.university || 'جامعتك'} • الرقم الجامعي: <span className="font-mono text-white font-bold">{profile?.academic_id || '---'}</span>
-            </p>
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-y-1 gap-x-3 text-xs text-slate-300">
+              <span>{profile?.university || 'جامعتك'}</span>
+              <span>•</span>
+              <span>الرقم الجامعي: <b className="font-mono text-white">{profile?.academic_id || '---'}</b></span>
+              <span>•</span>
+              <span className="flex items-center gap-1">
+                <Mail className="w-3.5 h-3.5 text-[#D99B7F]" />
+                <span className="font-mono text-white font-medium">{profile?.email || user?.email || 'لم يتم تسجيل البريد'}</span>
+              </span>
+            </div>
 
             {saveSuccess && (
               <div className="p-2.5 rounded-xl bg-emerald-950/70 border border-emerald-500/50 text-emerald-200 text-xs font-bold flex items-center gap-2">
@@ -153,7 +165,7 @@ export const ProfileView: React.FC = () => {
           </div>
 
           <p className="text-[11px] text-slate-300">
-            نظام المعدل المسجل: {profile?.gpa_type === '5' ? 'نظام الـ 5 نقاط' : profile?.gpa_type === '4' ? 'نظام الـ 4 نقاط' : 'نظام النسبة المئوية %'}
+            المعدل المسجل: {profile?.gpa_type === '5' ? 'نظام الـ 5 نقاط' : profile?.gpa_type === '4' ? 'نظام الـ 4 نقاط' : 'نظام النسبة المئوية %'}
           </p>
         </div>
 
@@ -166,18 +178,18 @@ export const ProfileView: React.FC = () => {
 
           <div className="space-y-3 text-xs text-slate-200">
             <div className="p-3 rounded-xl bg-[#0F3040]/70 border border-[#A56F63]/30 flex items-center justify-between">
-              <span className="text-slate-400">تاريخ بداية الترم:</span>
+              <span className="text-slate-400">تاريخ بداية الفصل الدراسي:</span>
               <span className="font-bold text-white">{formatDateArabic(profile?.term_start_date)}</span>
             </div>
 
             <div className="p-3 rounded-xl bg-[#0F3040]/70 border border-[#A56F63]/30 flex items-center justify-between">
-              <span className="text-slate-400">تاريخ نهاية الترم:</span>
+              <span className="text-slate-400">تاريخ نهاية الفصل الدراسي:</span>
               <span className="font-bold text-white">{formatDateArabic(profile?.term_end_date)}</span>
             </div>
           </div>
 
           <p className="text-[11px] text-[#D99B7F]">
-            * تعتمد خوارزمية حساب الغياب على تاريخ بداية الترم لحساب المحاضرات المنقضية بدقة.
+            * تعتمد خوارزمية حساب الغياب على تاريخ بداية الفصل الدراسي لحساب المحاضرات المنقضية بدقة.
           </p>
         </div>
 
@@ -191,6 +203,8 @@ export const ProfileView: React.FC = () => {
           </h2>
 
           <form onSubmit={handleSave} className="space-y-4">
+            
+            {/* الاسم الكامل والرقم الجامعي */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-200 mb-1">الاسم الكامل</label>
@@ -215,7 +229,21 @@ export const ProfileView: React.FC = () => {
               </div>
             </div>
 
+            {/* البريد الجامعي والجامعة */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-200 mb-1">البريد الجامعي</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="student@stu.kau.edu.sa"
+                  dir="ltr"
+                  className="w-full bg-[#0F3040] border border-[#A56F63]/40 rounded-xl px-3.5 py-2.5 text-xs text-white outline-hidden font-mono text-left"
+                  required
+                />
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-200 mb-1">الجامعة</label>
                 <input
@@ -226,7 +254,10 @@ export const ProfileView: React.FC = () => {
                   required
                 />
               </div>
+            </div>
 
+            {/* التخصص ونظام المعدل */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-200 mb-1">التخصص</label>
                 <input
@@ -237,11 +268,9 @@ export const ProfileView: React.FC = () => {
                   required
                 />
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-200 mb-1">نظام المعدل</label>
+                <label className="block text-xs font-bold text-slate-200 mb-1">المعدل</label>
                 <select
                   value={gpaType}
                   onChange={(e) => setGpaType(e.target.value as GpaType)}
@@ -254,7 +283,7 @@ export const ProfileView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-200 mb-1">قيمة المعدل</label>
+                <label className="block text-xs font-bold text-slate-200 mb-1">المعدل التراكمي</label>
                 <input
                   type="number"
                   step="0.01"
@@ -266,9 +295,10 @@ export const ProfileView: React.FC = () => {
               </div>
             </div>
 
+            {/* تواريخ الفصل الدراسي */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-200 mb-1">تاريخ بداية الترم</label>
+                <label className="block text-xs font-bold text-slate-200 mb-1">تاريخ بداية الفصل الدراسي</label>
                 <input
                   type="date"
                   value={termStartDate}
@@ -279,7 +309,7 @@ export const ProfileView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-200 mb-1">تاريخ نهاية الترم</label>
+                <label className="block text-xs font-bold text-slate-200 mb-1">تاريخ نهاية الفصل الدراسي</label>
                 <input
                   type="date"
                   value={termEndDate}

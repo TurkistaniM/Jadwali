@@ -367,7 +367,7 @@ export const AuthPage: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-200 mb-1">
-                    نظام المعدل
+                    المعدل
                   </label>
                   <select
                     value={gpaType}
@@ -403,7 +403,7 @@ export const AuthPage: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
                     <label className="block text-[10px] text-slate-300 mb-0.5">
-                      بداية الترم:
+                      بداية الفصل الدراسي:
                     </label>
                     <input
                       type="date"
@@ -414,7 +414,7 @@ export const AuthPage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-[10px] text-slate-300 mb-0.5">
-                      نهاية الترم:
+                      نهاية الفصل الدراسي:
                     </label>
                     <input
                       type="date"

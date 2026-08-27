@@ -14,6 +14,7 @@ export interface Profile {
   id: string; // UUID references auth.users
   full_name: string;
   academic_id: string; // Unique
+  email?: string;      // University Email
   university: string;
   major: string;
   gpa_type: GpaType;
