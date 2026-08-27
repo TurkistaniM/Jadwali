@@ -235,7 +235,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (schRes.status === 'fulfilled' && !schRes.value.error && schRes.value.data) {
           const mapped = schRes.value.data.map((item: any) => ({
             ...item,
-            status: toUiScholarshipStatus(item.status)
+            status: toUiScholarshipStatus(item.status),
+            // disbursement_date column doesn't exist in DB - use month_year as fallback
+            disbursement_date: item.disbursement_date || item.month_year || null
           }));
           setScholarships(mapped);
           syncLocal('scholarships', mapped);
@@ -383,11 +385,78 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Attendance Actions (Bidirectional status support)
   const recordAttendance = async (courseId: string, sessionDate: string, status: AttendanceStatus): Promise<boolean> => {
     if (!user) return false;
-    
+
     const uiStatus = toUiAttendanceStatus(status);
+    const dbStatus = toDbAttendanceStatus(status);
+
+    if (isSupabaseConfigured) {
+      try {
+        // Upsert and return DB row to get the actual id
+        const { data: upsertedRow, error: upsertErr } = await supabase
+          .from('attendance')
+          .upsert(
+            { user_id: user.id, course_id: courseId, session_date: sessionDate, status: dbStatus },
+            { onConflict: 'course_id,session_date' }
+          )
+          .select()
+          .single();
+
+        if (!upsertErr && upsertedRow) {
+          // Use DB id to ensure deleteAttendanceRecord works correctly
+          const dbRecord: Attendance = {
+            ...upsertedRow,
+            status: toUiAttendanceStatus(upsertedRow.status)
+          };
+          const existingIndex = attendance.findIndex(a => a.course_id === courseId && a.session_date === sessionDate);
+          let updated: Attendance[];
+          if (existingIndex >= 0) {
+            updated = [...attendance];
+            updated[existingIndex] = dbRecord;
+          } else {
+            updated = [dbRecord, ...attendance];
+          }
+          setAttendance(updated);
+          syncLocal('attendance', updated);
+          return true;
+        }
+
+        if (upsertErr) {
+          // Fallback: try with Arabic status
+          const { data: fallbackRow } = await supabase
+            .from('attendance')
+            .upsert(
+              { user_id: user.id, course_id: courseId, session_date: sessionDate, status: uiStatus },
+              { onConflict: 'course_id,session_date' }
+            )
+            .select()
+            .single();
+
+          if (fallbackRow) {
+            const dbRecord: Attendance = {
+              ...fallbackRow,
+              status: toUiAttendanceStatus(fallbackRow.status)
+            };
+            const existingIndex = attendance.findIndex(a => a.course_id === courseId && a.session_date === sessionDate);
+            let updated: Attendance[];
+            if (existingIndex >= 0) {
+              updated = [...attendance];
+              updated[existingIndex] = dbRecord;
+            } else {
+              updated = [dbRecord, ...attendance];
+            }
+            setAttendance(updated);
+            syncLocal('attendance', updated);
+            return true;
+          }
+        }
+      } catch (err) {
+        console.error('Supabase recordAttendance error:', err);
+      }
+    }
+
+    // Fallback: optimistic local update without DB confirmation
     const existingIndex = attendance.findIndex(a => a.course_id === courseId && a.session_date === sessionDate);
     let updated: Attendance[];
-
     if (existingIndex >= 0) {
       updated = [...attendance];
       updated[existingIndex] = { ...updated[existingIndex], status: uiStatus };
@@ -402,40 +471,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       updated = [newRecord, ...attendance];
     }
-
     setAttendance(updated);
     syncLocal('attendance', updated);
-
-    if (isSupabaseConfigured) {
-      try {
-        // Try with mapped DB status ('present', 'absent', etc.) first
-        const dbStatus = toDbAttendanceStatus(status);
-        const { error: upsertErr } = await supabase.from('attendance').upsert(
-          {
-            user_id: user.id,
-            course_id: courseId,
-            session_date: sessionDate,
-            status: dbStatus
-          },
-          { onConflict: 'course_id,session_date' }
-        );
-
-        if (upsertErr) {
-          // Fallback: try raw Arabic status if constraint in DB is in Arabic
-          await supabase.from('attendance').upsert(
-            {
-              user_id: user.id,
-              course_id: courseId,
-              session_date: sessionDate,
-              status: uiStatus
-            },
-            { onConflict: 'course_id,session_date' }
-          );
-        }
-      } catch (err) {
-        console.error('Supabase recordAttendance error:', err);
-      }
-    }
     return true;
   };
 
@@ -464,6 +501,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return false;
     const generatedId = getValidUUID();
 
+    // Optimistic local object (fallback if Supabase fails)
     const newTask: Task = {
       ...taskData,
       id: generatedId,
@@ -473,7 +511,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured) {
       try {
-        // Try with date_due column first
+        // Primary: insert using date_due (actual DB column name)
         const payload: any = {
           id: generatedId,
           user_id: user.id,
@@ -487,24 +525,54 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           payload.date_due = taskData.due_date;
         }
 
-        const { error: insertErr } = await supabase.from('tasks').insert(payload);
+        const { data: insertedRow, error: insertErr } = await supabase
+          .from('tasks')
+          .insert(payload)
+          .select()
+          .single();
+
+        if (!insertErr && insertedRow) {
+          // Map date_due → due_date so UI always reads from due_date
+          const mapped: Task = {
+            ...insertedRow,
+            due_date: insertedRow.due_date || insertedRow.date_due || taskData.due_date || null
+          };
+          const updated = [mapped, ...tasks];
+          setTasks(updated);
+          syncLocal('tasks', updated);
+          return true;
+        }
 
         if (insertErr) {
-          // If date_due column does not exist, try with due_date column
+          // Fallback: try with due_date column name
           delete payload.date_due;
           if (taskData.due_date) payload.due_date = taskData.due_date;
-          const { error: retryErr } = await supabase.from('tasks').insert(payload);
-          if (retryErr) {
-            // Fallback without date column
-            delete payload.due_date;
-            await supabase.from('tasks').insert(payload);
+          const { data: retryRow, error: retryErr } = await supabase
+            .from('tasks')
+            .insert(payload)
+            .select()
+            .single();
+
+          if (!retryErr && retryRow) {
+            const mapped: Task = {
+              ...retryRow,
+              due_date: retryRow.due_date || retryRow.date_due || taskData.due_date || null
+            };
+            const updated = [mapped, ...tasks];
+            setTasks(updated);
+            syncLocal('tasks', updated);
+            return true;
           }
+          // Last resort: insert without date column
+          delete payload.due_date;
+          await supabase.from('tasks').insert(payload);
         }
       } catch (err) {
         console.error('Supabase addTask error:', err);
       }
     }
 
+    // Fallback: use local object if Supabase failed or not configured
     const updated = [newTask, ...tasks];
     setTasks(updated);
     syncLocal('tasks', updated);
@@ -690,32 +758,54 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return false;
     const generatedId = getValidUUID();
     const uiStatus = toUiScholarshipStatus(data.status);
-    const newEntry: Scholarship = {
-      id: generatedId,
-      user_id: user.id,
-      month_year: data.disbursement_date || new Date().toISOString().split('T')[0],
-      amount: data.amount,
-      status: uiStatus,
-      disbursement_date: data.disbursement_date,
-      created_at: new Date().toISOString()
-    };
+    // disbursement_date is used as month_year in DB (no separate disbursement_date column)
+    const monthYear = data.disbursement_date || new Date().toISOString().split('T')[0];
 
     if (isSupabaseConfigured) {
       try {
         const dbStatus = toDbScholarshipStatus(uiStatus);
-        await supabase.from('scholarships').insert({
-          id: generatedId,
-          user_id: user.id,
-          month_year: newEntry.month_year,
-          amount: data.amount,
-          status: dbStatus,
-          disbursement_date: data.disbursement_date || null
-        });
+        const { data: insertedRow, error: insertErr } = await supabase
+          .from('scholarships')
+          .insert({
+            id: generatedId,
+            user_id: user.id,
+            month_year: monthYear,
+            amount: data.amount,
+            status: dbStatus
+            // NOTE: disbursement_date column does NOT exist in DB - month_year is used instead
+          })
+          .select()
+          .single();
+
+        if (!insertErr && insertedRow) {
+          const mapped: Scholarship = {
+            ...insertedRow,
+            status: toUiScholarshipStatus(insertedRow.status),
+            disbursement_date: insertedRow.month_year // store month_year as disbursement_date for UI
+          };
+          const updated = [mapped, ...scholarships];
+          setScholarships(updated);
+          syncLocal('scholarships', updated);
+          return true;
+        }
+        if (insertErr) {
+          console.error('Supabase addScholarship error:', insertErr.message);
+        }
       } catch (err) {
         console.error('Supabase addScholarship error:', err);
       }
     }
 
+    // Fallback: local only
+    const newEntry: Scholarship = {
+      id: generatedId,
+      user_id: user.id,
+      month_year: monthYear,
+      amount: data.amount,
+      status: uiStatus,
+      disbursement_date: data.disbursement_date,
+      created_at: new Date().toISOString()
+    };
     const updated = [newEntry, ...scholarships];
     setScholarships(updated);
     syncLocal('scholarships', updated);
