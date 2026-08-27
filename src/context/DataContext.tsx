@@ -65,7 +65,11 @@ interface DataContextType {
 
   // Scholarships
   scholarships: Scholarship[];
+  monthlyScholarshipAmount: number;
+  setMonthlyScholarshipAmount: (amount: number) => void;
+  addScholarship: (data: Pick<Scholarship, 'disbursement_date' | 'amount' | 'status'>) => Promise<boolean>;
   updateScholarshipStatus: (id: string, status: Scholarship['status']) => Promise<boolean>;
+  deleteScholarship: (id: string) => Promise<boolean>;
 
   // Notifications
   notifications: Notification[];
@@ -98,7 +102,7 @@ function getValidUUID(): string {
 }
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, isSessionChecked } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -107,6 +111,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoadingData, setIsLoadingData] = useState<boolean>(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [monthlyScholarshipAmount, setMonthlyScholarshipAmountState] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('jadwali_monthly_scholarship_amount');
+      return saved ? Number(saved) : 990;
+    } catch {
+      return 990;
+    }
+  });
+
+  const setMonthlyScholarshipAmount = (amount: number) => {
+    setMonthlyScholarshipAmountState(amount);
+    try {
+      localStorage.setItem('jadwali_monthly_scholarship_amount', String(amount));
+    } catch { /* ignore */ }
+  };
 
   // Local storage persistence helper
   const syncLocal = useCallback((key: string, data: any) => {
@@ -134,6 +153,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Load Data for authenticated user with robust per-entity loading & fallback
   const fetchData = useCallback(async () => {
+    // انتظر حتى يتم التحقق من الجلسة في Supabase أولاً
+    if (!isSessionChecked) return;
+
     if (!user) {
       setCourses([]);
       setAttendance([]);
@@ -252,7 +274,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoadingData(false);
     }
-  }, [user, syncLocal, getLocal]);
+  }, [user, isSessionChecked, syncLocal, getLocal]);
 
   useEffect(() => {
     fetchData();
@@ -664,6 +686,58 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   };
 
+  const addScholarship = async (data: Pick<Scholarship, 'disbursement_date' | 'amount' | 'status'>): Promise<boolean> => {
+    if (!user) return false;
+    const generatedId = getValidUUID();
+    const uiStatus = toUiScholarshipStatus(data.status);
+    const newEntry: Scholarship = {
+      id: generatedId,
+      user_id: user.id,
+      month_year: data.disbursement_date || new Date().toISOString().split('T')[0],
+      amount: data.amount,
+      status: uiStatus,
+      disbursement_date: data.disbursement_date,
+      created_at: new Date().toISOString()
+    };
+
+    if (isSupabaseConfigured) {
+      try {
+        const dbStatus = toDbScholarshipStatus(uiStatus);
+        await supabase.from('scholarships').insert({
+          id: generatedId,
+          user_id: user.id,
+          month_year: newEntry.month_year,
+          amount: data.amount,
+          status: dbStatus,
+          disbursement_date: data.disbursement_date || null
+        });
+      } catch (err) {
+        console.error('Supabase addScholarship error:', err);
+      }
+    }
+
+    const updated = [newEntry, ...scholarships];
+    setScholarships(updated);
+    syncLocal('scholarships', updated);
+    return true;
+  };
+
+  const deleteScholarship = async (id: string): Promise<boolean> => {
+    if (!user) return false;
+    const updated = scholarships.filter(s => s.id !== id);
+    setScholarships(updated);
+    syncLocal('scholarships', updated);
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('scholarships').delete().eq('id', id).eq('user_id', user.id);
+      } catch (err) {
+        console.error('Supabase deleteScholarship error:', err);
+      }
+    }
+    return true;
+  };
+
   // Notification Actions
   const markNotificationAsRead = async (id: string): Promise<boolean> => {
     if (!user) return false;
@@ -741,7 +815,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteExam,
 
         scholarships,
+        monthlyScholarshipAmount,
+        setMonthlyScholarshipAmount,
+        addScholarship,
         updateScholarshipStatus,
+        deleteScholarship,
 
         notifications,
         unreadNotificationCount,

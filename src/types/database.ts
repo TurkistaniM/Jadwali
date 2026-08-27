@@ -7,13 +7,14 @@ export type GpaType = '4' | '5' | '100';
 
 export type AttendanceStatus = 'حاضر' | 'غائب' | 'متأخر' | 'تم إلغاء الدرس' | 'present' | 'absent' | 'late' | 'cancelled';
 
-export type ScholarshipStatus = 'مستحقة' | 'تم الصرف' | 'موقوفة' | 'paid' | 'pending' | 'cancelled';
+export type ScholarshipStatus = 'مستحقة' | 'تم الصرف' | 'موقوفة' | 'قيد الانتظار' | 'معلقة' | 'paid' | 'pending' | 'cancelled';
 
 // 1. جدول الملف الشخصي (Profiles)
 export interface Profile {
   id: string; // UUID references auth.users
   full_name: string;
   academic_id: string; // Unique
+  email?: string;      // User email
   university: string;
   major: string;
   gpa_type: GpaType;

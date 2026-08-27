@@ -20,6 +20,7 @@ interface AuthContextType {
   profile: Profile | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isSessionChecked: boolean; // true بعد ما يتم التحقق من الجلسة في Supabase
   error: string | null;
   signIn: (identifier: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (data: SignUpData) => Promise<{ success: boolean; error?: string }>;
@@ -64,6 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSessionChecked, setIsSessionChecked] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // دالة موحدة لقراءة وتجهيز الملف الشخصي من Supabase
@@ -149,9 +151,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               term_end_date: DEFAULT_TERM_END
             });
           }
+        } else {
+          // لا توجد جلسة - مسح بيانات المستخدم المحلية
+          setUser(null);
+          setProfile(null);
+          localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
         }
       } catch (err) {
         console.warn('Background sync note:', err);
+      } finally {
+        // تم الانتهاء من التحقق من الجلسة - DataContext جاهز للتحميل
+        setIsSessionChecked(true);
       }
     };
 
@@ -203,10 +213,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             term_end_date: DEFAULT_TERM_END
           });
         }
+        setIsSessionChecked(true);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setProfile(null);
         localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+        setIsSessionChecked(true);
       }
     });
 
@@ -543,6 +555,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profile,
         isAuthenticated: Boolean(user),
         isLoading,
+        isSessionChecked,
         error,
         signIn,
         signUp,
