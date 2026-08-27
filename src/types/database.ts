@@ -37,7 +37,12 @@ export interface Course {
   contact_method?: string | null;
   created_at: string;
   schedule_days?: number[]; // [0: Sunday, 1: Monday, 2: Tuesday, 3: Wednesday, 4: Thursday]
-  schedule_time?: string;   // e.g. "09:00 - 10:30"
+  schedule_time?: string;   // e.g. "09:00 - 10:15"
+  has_lab?: boolean;
+  lab_day?: number | null;  // [0: Sunday, 1: Monday, 2: Tuesday, 3: Wednesday, 4: Thursday]
+  lab_time?: string | null; // e.g. "13:00 - 14:50"
+  lab_building?: string | null;
+  lab_room?: string | null;
 }
 
 // 3. جدول الحضور والغياب (Attendance)

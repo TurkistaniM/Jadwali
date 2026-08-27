@@ -53,7 +53,6 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-// Generate Valid UUID helper
 function getValidUUID(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     try {
@@ -71,7 +70,7 @@ function getValidUUID(): string {
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
 
-  // 1. Initial State from LocalStorage - STRICTLY scoped to user.id ONLY!
+  // 1. Initial State strictly scoped to user.id
   const [courses, setCourses] = useState<Course[]>(() => {
     try {
       if (!user) return [];
@@ -145,7 +144,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoadingData, setIsLoadingData] = useState<boolean>(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  // Helper to persist strictly per authenticated user
   const syncLocal = useCallback((key: string, data: any) => {
     if (user) {
       localStorage.setItem(`jadwali_${key}_${user.id}`, JSON.stringify(data));
@@ -159,7 +157,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Helper to ensure profile row exists in Supabase before foreign-key writes
+  // Helper to ensure profile exists in Supabase
   const ensureProfileInSupabase = async (userId: string, email: string) => {
     if (!isSupabaseConfigured) return;
     try {
@@ -176,7 +174,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Reset or Load Data strictly when user changes
+  // Load and merge data with zero wiping of local records
   const fetchData = useCallback(async () => {
     if (!user) {
       setCourses([]);
@@ -193,18 +191,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const userId = user.id;
 
-    // 1. قراءة البيانات المحلية الحالية الخاصة بهذا المستخدم
+    // Load local storage first
     const savedAmount = localStorage.getItem(`jadwali_sch_amount_${userId}`);
     setMonthlyScholarshipAmountState(savedAmount ? Number(savedAmount) : 990);
 
-    let currentLocalCourses: Course[] = [];
+    let localCoursesList: Course[] = [];
     const localCoursesStr = localStorage.getItem(`jadwali_courses_${userId}`);
     if (localCoursesStr) {
       try {
-        currentLocalCourses = JSON.parse(localCoursesStr);
-        setCourses(currentLocalCourses);
+        localCoursesList = JSON.parse(localCoursesStr);
+        setCourses(localCoursesList);
       } catch {
-        currentLocalCourses = [];
+        localCoursesList = [];
       }
     }
 
@@ -223,7 +221,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const localNotStr = localStorage.getItem(`jadwali_notifications_${userId}`);
     if (localNotStr) setNotifications(JSON.parse(localNotStr));
 
-    // 2. جلب ومزامنة البيانات من Supabase
+    // Fetch from Supabase and merge
     try {
       if (isSupabaseConfigured) {
         await ensureProfileInSupabase(userId, user.email);
@@ -237,32 +235,55 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false })
         ]);
 
-        // مزامنة المواد: إذا وُجدت مواد في Supabase نأخذها، وإذا لم توجد في Supabase ولكنها موجودة محلياً نقوم برفعها لسحابة Supabase فوراً!
         if (!crsRes.error && crsRes.data) {
           if (crsRes.data.length > 0) {
             const mappedCourses: Course[] = crsRes.data.map((c: any) => ({
               ...c,
               schedule_days: c.schedule_days || [1, 3],
-              schedule_time: c.schedule_time || '09:00 - 10:15'
+              schedule_time: c.schedule_time || '09:00 - 10:15',
+              has_lab: Boolean(c.has_lab),
+              lab_day: c.lab_day !== undefined ? c.lab_day : null,
+              lab_time: c.lab_time || null,
+              lab_building: c.lab_building || null,
+              lab_room: c.lab_room || null
             }));
-            setCourses(mappedCourses);
-            syncLocal('courses', mappedCourses);
-          } else if (currentLocalCourses.length > 0) {
-            // مزامنة المواد المحلية إلى Supabase
-            for (const localC of currentLocalCourses) {
-              await supabase.from('courses').upsert({
-                id: localC.id,
-                user_id: userId,
-                course_name: localC.course_name,
-                instructor_name: localC.instructor_name || null,
-                building: localC.building || null,
-                room: localC.room || null,
-                color_code: localC.color_code || '#A56F63',
-                contact_info: localC.contact_info || null,
-                contact_method: localC.contact_method || null,
-                schedule_days: localC.schedule_days || [1, 3],
-                schedule_time: localC.schedule_time || '09:00 - 10:15'
+
+            // دمج المواد السحابية مع أي مواد مضافة محلياً لمنع حذف أي مادة
+            setCourses(prev => {
+              const map = new Map<string, Course>();
+              mappedCourses.forEach(c => map.set(c.id, c));
+              prev.forEach(c => {
+                if (!map.has(c.id)) map.set(c.id, c);
               });
+              const merged = Array.from(map.values());
+              syncLocal('courses', merged);
+              return merged;
+            });
+          } else if (localCoursesList.length > 0) {
+            // إذا كانت السحابة فارغة ولكن يوجد مواد محلية، نقوم برفعها للسحابة فوراً
+            for (const localC of localCoursesList) {
+              try {
+                await supabase.from('courses').upsert({
+                  id: localC.id,
+                  user_id: userId,
+                  course_name: localC.course_name,
+                  instructor_name: localC.instructor_name || null,
+                  building: localC.building || null,
+                  room: localC.room || null,
+                  color_code: localC.color_code || '#A56F63',
+                  contact_info: localC.contact_info || null,
+                  contact_method: localC.contact_method || null,
+                  schedule_days: localC.schedule_days || [1, 3],
+                  schedule_time: localC.schedule_time || '09:00 - 10:15',
+                  has_lab: localC.has_lab || false,
+                  lab_day: localC.lab_day !== undefined ? localC.lab_day : null,
+                  lab_time: localC.lab_time || null,
+                  lab_building: localC.lab_building || null,
+                  lab_room: localC.lab_room || null
+                });
+              } catch (e) {
+                console.warn('Sync course to Supabase note:', e);
+              }
             }
           }
         }
@@ -299,7 +320,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchData();
   }, [fetchData]);
 
-  // Course Actions
+  // Course Actions with absolute persistence guarantee
   const addCourse = async (courseData: Omit<Course, 'id' | 'user_id' | 'created_at'>): Promise<boolean> => {
     if (!user) return false;
     const generatedId = getValidUUID();
@@ -310,13 +331,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user_id: user.id,
       schedule_days: courseData.schedule_days || [1, 3],
       schedule_time: courseData.schedule_time || '09:00 - 10:15',
+      has_lab: Boolean(courseData.has_lab),
+      lab_day: courseData.lab_day !== undefined ? courseData.lab_day : null,
+      lab_time: courseData.lab_time || null,
+      lab_building: courseData.lab_building || null,
+      lab_room: courseData.lab_room || null,
       created_at: new Date().toISOString()
     };
 
-    const updated = [newCourse, ...courses];
-    setCourses(updated);
-    syncLocal('courses', updated);
+    // حفظ فوري في الحالة والذاكرة المحلية
+    setCourses(prev => {
+      const next = [newCourse, ...prev.filter(c => c.id !== generatedId)];
+      if (user) {
+        localStorage.setItem(`jadwali_courses_${user.id}`, JSON.stringify(next));
+      }
+      return next;
+    });
 
+    // حفظ فوري في Supabase
     if (isSupabaseConfigured) {
       try {
         await ensureProfileInSupabase(user.id, user.email);
@@ -334,11 +366,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             contact_info: courseData.contact_info || null,
             contact_method: courseData.contact_method || null,
             schedule_days: courseData.schedule_days || [1, 3],
-            schedule_time: courseData.schedule_time || '09:00 - 10:15'
+            schedule_time: courseData.schedule_time || '09:00 - 10:15',
+            has_lab: Boolean(courseData.has_lab),
+            lab_day: courseData.lab_day !== undefined ? courseData.lab_day : null,
+            lab_time: courseData.lab_time || null,
+            lab_building: courseData.lab_building || null,
+            lab_room: courseData.lab_room || null
           });
 
         if (error) {
-          console.warn('Supabase addCourse upsert error:', error.message);
+          console.warn('Supabase addCourse error:', error.message);
         }
       } catch (err) {
         console.warn('Supabase addCourse catch:', err);
@@ -350,9 +387,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateCourse = async (id: string, updates: Partial<Course>): Promise<boolean> => {
     if (!user) return false;
-    const updated = courses.map(c => c.id === id ? { ...c, ...updates } : c);
-    setCourses(updated);
-    syncLocal('courses', updated);
+
+    setCourses(prev => {
+      const next = prev.map(c => c.id === id ? { ...c, ...updates } : c);
+      if (user) {
+        localStorage.setItem(`jadwali_courses_${user.id}`, JSON.stringify(next));
+      }
+      return next;
+    });
 
     if (isSupabaseConfigured) {
       try {
@@ -366,9 +408,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteCourse = async (id: string): Promise<boolean> => {
     if (!user) return false;
-    const updated = courses.filter(c => c.id !== id);
-    setCourses(updated);
-    syncLocal('courses', updated);
+
+    setCourses(prev => {
+      const next = prev.filter(c => c.id !== id);
+      if (user) {
+        localStorage.setItem(`jadwali_courses_${user.id}`, JSON.stringify(next));
+      }
+      return next;
+    });
 
     const updatedAtt = attendance.filter(a => a.course_id !== id);
     setAttendance(updatedAtt);
@@ -468,9 +515,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       created_at: new Date().toISOString()
     };
 
-    const updated = [newTask, ...tasks];
-    setTasks(updated);
-    syncLocal('tasks', updated);
+    setTasks(prev => {
+      const next = [newTask, ...prev];
+      if (user) localStorage.setItem(`jadwali_tasks_${user.id}`, JSON.stringify(next));
+      return next;
+    });
 
     if (isSupabaseConfigured) {
       try {
@@ -494,15 +543,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const toggleTaskCompletion = async (taskId: string): Promise<boolean> => {
     if (!user) return false;
-    const updated = tasks.map(t => t.id === taskId ? { ...t, is_completed: !t.is_completed } : t);
-    setTasks(updated);
-    syncLocal('tasks', updated);
+    setTasks(prev => {
+      const next = prev.map(t => t.id === taskId ? { ...t, is_completed: !t.is_completed } : t);
+      if (user) localStorage.setItem(`jadwali_tasks_${user.id}`, JSON.stringify(next));
+      return next;
+    });
 
     if (isSupabaseConfigured) {
-      const task = updated.find(t => t.id === taskId);
+      const task = tasks.find(t => t.id === taskId);
       if (task) {
         try {
-          await supabase.from('tasks').update({ is_completed: task.is_completed }).eq('id', taskId).eq('user_id', user.id);
+          await supabase.from('tasks').update({ is_completed: !task.is_completed }).eq('id', taskId).eq('user_id', user.id);
         } catch (err) {
           console.warn('Supabase toggleTaskCompletion error:', err);
         }
@@ -513,15 +564,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const toggleTaskImportance = async (taskId: string): Promise<boolean> => {
     if (!user) return false;
-    const updated = tasks.map(t => t.id === taskId ? { ...t, is_important: !t.is_important } : t);
-    setTasks(updated);
-    syncLocal('tasks', updated);
+    setTasks(prev => {
+      const next = prev.map(t => t.id === taskId ? { ...t, is_important: !t.is_important } : t);
+      if (user) localStorage.setItem(`jadwali_tasks_${user.id}`, JSON.stringify(next));
+      return next;
+    });
 
     if (isSupabaseConfigured) {
-      const task = updated.find(t => t.id === taskId);
+      const task = tasks.find(t => t.id === taskId);
       if (task) {
         try {
-          await supabase.from('tasks').update({ is_important: task.is_important }).eq('id', taskId).eq('user_id', user.id);
+          await supabase.from('tasks').update({ is_important: !task.is_important }).eq('id', taskId).eq('user_id', user.id);
         } catch (err) {
           console.warn('Supabase toggleTaskImportance error:', err);
         }
@@ -532,9 +585,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteTask = async (taskId: string): Promise<boolean> => {
     if (!user) return false;
-    const updated = tasks.filter(t => t.id !== taskId);
-    setTasks(updated);
-    syncLocal('tasks', updated);
+    setTasks(prev => {
+      const next = prev.filter(t => t.id !== taskId);
+      if (user) localStorage.setItem(`jadwali_tasks_${user.id}`, JSON.stringify(next));
+      return next;
+    });
 
     if (isSupabaseConfigured) {
       try {
@@ -564,9 +619,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       created_at: new Date().toISOString()
     };
 
-    const updated = [newExam, ...exams];
-    setExams(updated);
-    syncLocal('exams', updated);
+    setExams(prev => {
+      const next = [newExam, ...prev];
+      if (user) localStorage.setItem(`jadwali_exams_${user.id}`, JSON.stringify(next));
+      return next;
+    });
 
     if (isSupabaseConfigured) {
       try {
@@ -589,9 +646,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteExam = async (id: string): Promise<boolean> => {
     if (!user) return false;
-    const updated = exams.filter(e => e.id !== id);
-    setExams(updated);
-    syncLocal('exams', updated);
+    setExams(prev => {
+      const next = prev.filter(e => e.id !== id);
+      if (user) localStorage.setItem(`jadwali_exams_${user.id}`, JSON.stringify(next));
+      return next;
+    });
 
     if (isSupabaseConfigured) {
       try {
@@ -615,9 +674,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       created_at: new Date().toISOString()
     };
 
-    const updated = [newSch, ...scholarships];
-    setScholarships(updated);
-    syncLocal('scholarships', updated);
+    setScholarships(prev => {
+      const next = [newSch, ...prev];
+      if (user) localStorage.setItem(`jadwali_scholarships_${user.id}`, JSON.stringify(next));
+      return next;
+    });
 
     if (isSupabaseConfigured) {
       try {
@@ -639,9 +700,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateScholarshipStatus = async (id: string, status: Scholarship['status']): Promise<boolean> => {
     if (!user) return false;
-    const updated = scholarships.map(s => s.id === id ? { ...s, status } : s);
-    setScholarships(updated);
-    syncLocal('scholarships', updated);
+    setScholarships(prev => {
+      const next = prev.map(s => s.id === id ? { ...s, status } : s);
+      if (user) localStorage.setItem(`jadwali_scholarships_${user.id}`, JSON.stringify(next));
+      return next;
+    });
 
     if (isSupabaseConfigured) {
       try {
@@ -655,9 +718,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteScholarship = async (id: string): Promise<boolean> => {
     if (!user) return false;
-    const updated = scholarships.filter(s => s.id !== id);
-    setScholarships(updated);
-    syncLocal('scholarships', updated);
+    setScholarships(prev => {
+      const next = prev.filter(s => s.id !== id);
+      if (user) localStorage.setItem(`jadwali_scholarships_${user.id}`, JSON.stringify(next));
+      return next;
+    });
 
     if (isSupabaseConfigured) {
       try {
@@ -672,9 +737,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Notification Actions
   const markNotificationAsRead = async (id: string): Promise<boolean> => {
     if (!user) return false;
-    const updated = notifications.map(n => n.id === id ? { ...n, is_read: true } : n);
-    setNotifications(updated);
-    syncLocal('notifications', updated);
+    setNotifications(prev => {
+      const next = prev.map(n => n.id === id ? { ...n, is_read: true } : n);
+      if (user) localStorage.setItem(`jadwali_notifications_${user.id}`, JSON.stringify(next));
+      return next;
+    });
 
     if (isSupabaseConfigured) {
       try {
@@ -688,9 +755,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const markAllNotificationsAsRead = async (): Promise<boolean> => {
     if (!user) return false;
-    const updated = notifications.map(n => ({ ...n, is_read: true }));
-    setNotifications(updated);
-    syncLocal('notifications', updated);
+    setNotifications(prev => {
+      const next = prev.map(n => ({ ...n, is_read: true }));
+      if (user) localStorage.setItem(`jadwali_notifications_${user.id}`, JSON.stringify(next));
+      return next;
+    });
 
     if (isSupabaseConfigured) {
       try {
@@ -704,9 +773,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteNotification = async (id: string): Promise<boolean> => {
     if (!user) return false;
-    const updated = notifications.filter(n => n.id !== id);
-    setNotifications(updated);
-    syncLocal('notifications', updated);
+    setNotifications(prev => {
+      const next = prev.filter(n => n.id !== id);
+      if (user) localStorage.setItem(`jadwali_notifications_${user.id}`, JSON.stringify(next));
+      return next;
+    });
 
     if (isSupabaseConfigured) {
       try {

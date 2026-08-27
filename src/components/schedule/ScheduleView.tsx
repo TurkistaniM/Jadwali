@@ -4,7 +4,8 @@ import {
   Clock, 
   MapPin, 
   User, 
-  Sparkles
+  Sparkles,
+  FlaskConical
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
@@ -18,18 +19,50 @@ const DAYS_OF_WEEK = [
   { id: 4, name: 'الخميس', short: 'خميس' },
 ];
 
+interface DayScheduleItem {
+  id: string;
+  course: Course;
+  isLab: boolean;
+  time: string;
+  building?: string | null;
+  room?: string | null;
+}
+
 export const ScheduleView: React.FC = () => {
   const { courses } = useData();
   const { profile } = useAuth();
 
-  // Helper to get courses for a specific day based on configured schedule_days
-  const getCoursesForDay = (dayId: number): Course[] => {
-    return courses.filter((c) => {
-      if (c.schedule_days && Array.isArray(c.schedule_days) && c.schedule_days.length > 0) {
-        return c.schedule_days.includes(dayId);
+  // Helper to get all lectures and labs for a specific day
+  const getScheduleItemsForDay = (dayId: number): DayScheduleItem[] => {
+    const items: DayScheduleItem[] = [];
+
+    courses.forEach((c) => {
+      // 1. المحاضرة النظرية
+      if (c.schedule_days && Array.isArray(c.schedule_days) && c.schedule_days.includes(dayId)) {
+        items.push({
+          id: `${c.id}-lecture-${dayId}`,
+          course: c,
+          isLab: false,
+          time: c.schedule_time || '09:00 - 10:15',
+          building: c.building,
+          room: c.room
+        });
       }
-      return false;
+
+      // 2. سكشن المعمل / العملي
+      if (c.has_lab && c.lab_day === dayId) {
+        items.push({
+          id: `${c.id}-lab-${dayId}`,
+          course: c,
+          isLab: true,
+          time: c.lab_time || '13:00 - 14:50',
+          building: c.lab_building || c.building,
+          room: c.lab_room || c.room
+        });
+      }
     });
+
+    return items;
   };
 
   return (
@@ -43,7 +76,7 @@ export const ScheduleView: React.FC = () => {
             <h1 className="text-xl sm:text-2xl font-black text-white">الجدول الدراسي الأسبوعي</h1>
           </div>
           <p className="text-xs sm:text-sm text-slate-300">
-            توزيع المحاضرات الأسبوعية من الأحد إلى الخميس ومواعيد وأماكن القاعات وفق الأيام والأوقات التي اخترتها.
+            توزيع المحاضرات الأسبوعية والمعامل من الأحد إلى الخميس ومواعيد وأماكن القاعات.
           </p>
         </div>
 
@@ -56,7 +89,7 @@ export const ScheduleView: React.FC = () => {
       {/* Weekly Schedule Days Grid */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         {DAYS_OF_WEEK.map((day) => {
-          const dayCourses = getCoursesForDay(day.id);
+          const dayItems = getScheduleItemsForDay(day.id);
           const isToday = new Date().getDay() === day.id;
 
           return (
@@ -82,41 +115,57 @@ export const ScheduleView: React.FC = () => {
                 )}
               </div>
 
-              {/* Day Courses List */}
+              {/* Day Courses / Labs List */}
               <div className="p-3 space-y-3 flex-1">
-                {dayCourses.length === 0 ? (
+                {dayItems.length === 0 ? (
                   <div className="py-8 text-center text-slate-400 text-xs">
                     لا توجد محاضرات
                   </div>
                 ) : (
-                  dayCourses.map((c) => (
+                  dayItems.map((item) => (
                     <div
-                      key={c.id}
-                      className="p-3.5 rounded-2xl bg-[#0F3040]/80 border border-[#A56F63]/30 shadow-inner space-y-2 hover:border-[#D99B7F]/50 transition"
+                      key={item.id}
+                      className={`p-3.5 rounded-2xl border shadow-inner space-y-2 transition ${
+                        item.isLab
+                          ? 'bg-[#0F3040] border-[#D99B7F]/60'
+                          : 'bg-[#0F3040]/80 border-[#A56F63]/30 hover:border-[#D99B7F]/50'
+                      }`}
                     >
-                      <div className="flex items-center gap-2">
-                        <span 
-                          className="w-2.5 h-2.5 rounded-full shrink-0" 
-                          style={{ backgroundColor: c.color_code }}
-                        />
-                        <h4 className="text-xs font-bold text-white truncate">{c.course_name}</h4>
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span 
+                            className="w-2.5 h-2.5 rounded-full shrink-0" 
+                            style={{ backgroundColor: item.course.color_code }}
+                          />
+                          <h4 className="text-xs font-bold text-white truncate">{item.course.course_name}</h4>
+                        </div>
+                        {item.isLab && (
+                          <span className="px-1.5 py-0.5 rounded bg-[#A56F63] text-white text-[9px] font-bold shrink-0 flex items-center gap-0.5">
+                            <FlaskConical className="w-2.5 h-2.5" />
+                            <span>معمل</span>
+                          </span>
+                        )}
                       </div>
 
                       <div className="space-y-1 text-[11px] text-slate-300">
                         <div className="flex items-center gap-1.5 text-slate-400">
                           <Clock className="w-3 h-3 text-[#D99B7F]" />
-                          <span>{c.schedule_time || '09:00 - 10:20'}</span>
+                          <span>{item.time}</span>
                         </div>
 
-                        <div className="flex items-center gap-1.5 text-slate-400">
-                          <MapPin className="w-3 h-3 text-[#D99B7F]" />
-                          <span>{c.building || 'المبنى'} ({c.room || 'القاعة'})</span>
-                        </div>
+                        {(item.building || item.room) && (
+                          <div className="flex items-center gap-1.5 text-slate-400">
+                            <MapPin className="w-3 h-3 text-[#D99B7F]" />
+                            <span>{item.building || ''} {item.room ? `(${item.room})` : ''}</span>
+                          </div>
+                        )}
 
-                        <div className="flex items-center gap-1.5 text-slate-400">
-                          <User className="w-3 h-3 text-slate-400" />
-                          <span className="truncate">{c.instructor_name || 'الدكتور'}</span>
-                        </div>
+                        {!item.isLab && item.course.instructor_name && (
+                          <div className="flex items-center gap-1.5 text-slate-400">
+                            <User className="w-3 h-3 text-slate-400" />
+                            <span className="truncate">{item.course.instructor_name}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))

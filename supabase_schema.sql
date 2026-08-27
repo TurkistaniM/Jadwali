@@ -41,8 +41,20 @@ CREATE TABLE IF NOT EXISTS courses (
   contact_method TEXT,
   schedule_days INTEGER[] DEFAULT ARRAY[1, 3],
   schedule_time TEXT DEFAULT '09:00 - 10:15',
+  has_lab BOOLEAN DEFAULT false,
+  lab_day INTEGER,
+  lab_time TEXT,
+  lab_building TEXT,
+  lab_room TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- تحديث جدول courses لإضافة أعمدة المعمل إن كان موجوداً
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS has_lab BOOLEAN DEFAULT false;
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS lab_day INTEGER;
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS lab_time TEXT;
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS lab_building TEXT;
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS lab_room TEXT;
 
 -- 3. جدول الحضور والغياب (Attendance)
 CREATE TABLE IF NOT EXISTS attendance (
