@@ -71,12 +71,11 @@ function getValidUUID(): string {
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
 
-  // 1. Initial State from LocalStorage to guarantee ZERO data loss upon refresh
+  // 1. Initial State from LocalStorage - STRICTLY scoped to user.id ONLY!
   const [courses, setCourses] = useState<Course[]>(() => {
     try {
-      const saved = 
-        (user && localStorage.getItem(`jadwali_courses_${user.id}`)) ||
-        localStorage.getItem('jadwali_courses_global');
+      if (!user) return [];
+      const saved = localStorage.getItem(`jadwali_courses_${user.id}`);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -85,9 +84,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [attendance, setAttendance] = useState<Attendance[]>(() => {
     try {
-      const saved = 
-        (user && localStorage.getItem(`jadwali_attendance_${user.id}`)) ||
-        localStorage.getItem('jadwali_attendance_global');
+      if (!user) return [];
+      const saved = localStorage.getItem(`jadwali_attendance_${user.id}`);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -96,9 +94,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [tasks, setTasks] = useState<Task[]>(() => {
     try {
-      const saved = 
-        (user && localStorage.getItem(`jadwali_tasks_${user.id}`)) ||
-        localStorage.getItem('jadwali_tasks_global');
+      if (!user) return [];
+      const saved = localStorage.getItem(`jadwali_tasks_${user.id}`);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -107,9 +104,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [exams, setExams] = useState<Exam[]>(() => {
     try {
-      const saved = 
-        (user && localStorage.getItem(`jadwali_exams_${user.id}`)) ||
-        localStorage.getItem('jadwali_exams_global');
+      if (!user) return [];
+      const saved = localStorage.getItem(`jadwali_exams_${user.id}`);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -118,9 +114,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [scholarships, setScholarships] = useState<Scholarship[]>(() => {
     try {
-      const saved = 
-        (user && localStorage.getItem(`jadwali_scholarships_${user.id}`)) ||
-        localStorage.getItem('jadwali_scholarships_global');
+      if (!user) return [];
+      const saved = localStorage.getItem(`jadwali_scholarships_${user.id}`);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -129,9 +124,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [monthlyScholarshipAmount, setMonthlyScholarshipAmountState] = useState<number>(() => {
     try {
-      const saved = 
-        (user && localStorage.getItem(`jadwali_sch_amount_${user.id}`)) ||
-        localStorage.getItem('jadwali_sch_amount_global');
+      if (!user) return 990;
+      const saved = localStorage.getItem(`jadwali_sch_amount_${user.id}`);
       return saved ? Number(saved) : 990;
     } catch {
       return 990;
@@ -140,9 +134,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [notifications, setNotifications] = useState<Notification[]>(() => {
     try {
-      const saved = 
-        (user && localStorage.getItem(`jadwali_notifications_${user.id}`)) ||
-        localStorage.getItem('jadwali_notifications_global');
+      if (!user) return [];
+      const saved = localStorage.getItem(`jadwali_notifications_${user.id}`);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -152,13 +145,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoadingData, setIsLoadingData] = useState<boolean>(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  // Helper to persist locally with user key and global backup
+  // Helper to persist strictly per authenticated user
   const syncLocal = useCallback((key: string, data: any) => {
     if (user) {
       localStorage.setItem(`jadwali_${key}_${user.id}`, JSON.stringify(data));
-      localStorage.setItem(`sp_${key}_${user.id}`, JSON.stringify(data));
     }
-    localStorage.setItem(`jadwali_${key}_global`, JSON.stringify(data));
   }, [user]);
 
   const setMonthlyScholarshipAmount = (amount: number) => {
@@ -166,38 +157,57 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user) {
       localStorage.setItem(`jadwali_sch_amount_${user.id}`, amount.toString());
     }
-    localStorage.setItem('jadwali_sch_amount_global', amount.toString());
   };
 
-  // Load Data for authenticated user
+  // Reset or Load Data strictly when user changes
   const fetchData = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      // تفريغ كافة البيانات من الذاكرة فور تسجيل الخروج
+      setCourses([]);
+      setAttendance([]);
+      setTasks([]);
+      setExams([]);
+      setScholarships([]);
+      setNotifications([]);
+      return;
+    }
 
     setIsLoadingData(true);
     setServerError(null);
 
     const userId = user.id;
 
-    // Load monthly amount
-    const savedAmount = 
-      localStorage.getItem(`jadwali_sch_amount_${userId}`) ||
-      localStorage.getItem('jadwali_sch_amount_global');
-    if (savedAmount) setMonthlyScholarshipAmountState(Number(savedAmount));
+    // 1. قراءة البيانات المحلية الخاصة بهذا المستخدم حصراً
+    const savedAmount = localStorage.getItem(`jadwali_sch_amount_${userId}`);
+    setMonthlyScholarshipAmountState(savedAmount ? Number(savedAmount) : 990);
 
-    const localCoursesStr = 
-      localStorage.getItem(`jadwali_courses_${userId}`) ||
-      localStorage.getItem(`sp_courses_${userId}`) ||
-      localStorage.getItem('jadwali_courses_global');
-    
+    const localCoursesStr = localStorage.getItem(`jadwali_courses_${userId}`);
     if (localCoursesStr) {
       try {
-        const parsed = JSON.parse(localCoursesStr);
-        if (parsed.length > 0) setCourses(parsed);
+        setCourses(JSON.parse(localCoursesStr));
       } catch (e) {
-        console.warn('Local courses parse error', e);
+        setCourses([]);
       }
+    } else {
+      setCourses([]);
     }
 
+    const localAttStr = localStorage.getItem(`jadwali_attendance_${userId}`);
+    setAttendance(localAttStr ? JSON.parse(localAttStr) : []);
+
+    const localTskStr = localStorage.getItem(`jadwali_tasks_${userId}`);
+    setTasks(localTskStr ? JSON.parse(localTskStr) : []);
+
+    const localExmStr = localStorage.getItem(`jadwali_exams_${userId}`);
+    setExams(localExmStr ? JSON.parse(localExmStr) : []);
+
+    const localSchStr = localStorage.getItem(`jadwali_scholarships_${userId}`);
+    setScholarships(localSchStr ? JSON.parse(localSchStr) : []);
+
+    const localNotStr = localStorage.getItem(`jadwali_notifications_${userId}`);
+    setNotifications(localNotStr ? JSON.parse(localNotStr) : []);
+
+    // 2. جلب البيانات من Supabase الخاصة بـ user.id حصراً
     try {
       if (isSupabaseConfigured) {
         const [crsRes, attRes, tskRes, exmRes, schRes, notRes] = await Promise.all([
@@ -209,7 +219,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false })
         ]);
 
-        if (!crsRes.error && crsRes.data && crsRes.data.length > 0) {
+        if (!crsRes.error && crsRes.data) {
           const mappedCourses: Course[] = crsRes.data.map((c: any) => ({
             ...c,
             schedule_days: c.schedule_days || [1, 3],
@@ -219,29 +229,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           syncLocal('courses', mappedCourses);
         }
 
-        if (!attRes.error && attRes.data && attRes.data.length > 0) {
+        if (!attRes.error && attRes.data) {
           setAttendance(attRes.data);
           syncLocal('attendance', attRes.data);
         }
-        if (!tskRes.error && tskRes.data && tskRes.data.length > 0) {
+        if (!tskRes.error && tskRes.data) {
           setTasks(tskRes.data);
           syncLocal('tasks', tskRes.data);
         }
-        if (!exmRes.error && exmRes.data && exmRes.data.length > 0) {
+        if (!exmRes.error && exmRes.data) {
           setExams(exmRes.data);
           syncLocal('exams', exmRes.data);
         }
-        if (!schRes.error && schRes.data && schRes.data.length > 0) {
+        if (!schRes.error && schRes.data) {
           setScholarships(schRes.data);
           syncLocal('scholarships', schRes.data);
         }
-        if (!notRes.error && notRes.data && notRes.data.length > 0) {
+        if (!notRes.error && notRes.data) {
           setNotifications(notRes.data);
           syncLocal('notifications', notRes.data);
         }
       }
     } catch (err: any) {
-      console.warn('Supabase fetch error, maintaining local state:', err);
+      console.warn('Supabase fetch note:', err);
     } finally {
       setIsLoadingData(false);
     }
@@ -546,7 +556,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   };
 
-  // Scholarship Actions (مع إمكانية الإضافة والتعديل والحذف)
+  // Scholarship Actions
   const addScholarship = async (data: Omit<Scholarship, 'id' | 'user_id' | 'created_at'>): Promise<boolean> => {
     if (!user) return false;
     const generatedId = getValidUUID();

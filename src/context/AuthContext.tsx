@@ -32,10 +32,32 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_USER_KEY = 'jadwali_auth_user';
-const LOCAL_STORAGE_PROFILE_KEY = 'jadwali_profile_data';
+const LOCAL_STORAGE_USER_KEY = 'jadwali_auth_active_user';
+
+// تنظيف أي مفاتيح قديمة غير معزولة لمنع تسريب البيانات بين المستخدمين
+const cleanupLegacyGlobalStorage = () => {
+  try {
+    const legacyKeys = [
+      'jadwali_courses_global',
+      'jadwali_attendance_global',
+      'jadwali_tasks_global',
+      'jadwali_exams_global',
+      'jadwali_scholarships_global',
+      'jadwali_notifications_global',
+      'jadwali_profile_data',
+      'jadwali_sch_amount_global'
+    ];
+    legacyKeys.forEach(k => localStorage.removeItem(k));
+  } catch (e) {
+    console.warn('Storage cleanup note:', e);
+  }
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  useEffect(() => {
+    cleanupLegacyGlobalStorage();
+  }, []);
+
   const [user, setUser] = useState<{ id: string; email: string } | null>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
@@ -47,8 +69,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [profile, setProfile] = useState<Profile | null>(() => {
     try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_PROFILE_KEY);
-      return saved ? JSON.parse(saved) : null;
+      const savedUser = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+      if (savedUser) {
+        const parsedUser = JSON.parse(savedUser);
+        if (parsedUser?.id) {
+          const userSpecificProfile = localStorage.getItem(`jadwali_profile_${parsedUser.id}`);
+          return userSpecificProfile ? JSON.parse(userSpecificProfile) : null;
+        }
+      }
+      return null;
     } catch {
       return null;
     }
@@ -57,7 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // مزامنة والتحقق من الجلسة في Supabase عند التحميل ودعم OAuth
+  // مزامنة والتحقق من الجلسة في Supabase مع عزل أمني صارم 100%
   useEffect(() => {
     const checkSupabaseSession = async () => {
       if (!isSupabaseConfigured) return;
@@ -76,25 +105,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (profData) {
             setProfile(profData as Profile);
-            localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(profData));
             localStorage.setItem(`jadwali_profile_${session.user.id}`, JSON.stringify(profData));
             if (profData.academic_id) {
               localStorage.setItem(`jadwali_academic_map_${profData.academic_id}`, authUser.email);
             }
           } else {
-            const saved = 
-              localStorage.getItem(`jadwali_profile_${session.user.id}`) ||
-              localStorage.getItem(LOCAL_STORAGE_PROFILE_KEY);
+            // التحقق فقط من الملف الخاص بهذا المستخدم تحديداً
+            const saved = localStorage.getItem(`jadwali_profile_${session.user.id}`);
 
             let effectiveProfile: Profile;
             if (saved) {
               effectiveProfile = { ...JSON.parse(saved), id: session.user.id };
             } else {
-              // تهيئة ملف افتراضي لمستخدم جوجل أو المستخدم الجديد
+              // مستخدم جديد تماماً - لا نأخذ بيانات أي مستخدم سابق
+              const googleFullName = 
+                session.user.user_metadata?.full_name || 
+                session.user.user_metadata?.name || 
+                authUser.email.split('@')[0] || 
+                'طالب جامعي';
+
               effectiveProfile = {
                 id: session.user.id,
-                full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || authUser.email.split('@')[0] || 'طالب جامعي',
-                academic_id: session.user.user_metadata?.academic_id || '44500000',
+                full_name: googleFullName,
+                academic_id: session.user.user_metadata?.academic_id || '',
                 email: authUser.email,
                 university: 'جامعة الملك عبدالعزيز',
                 major: 'علوم الحاسب',
@@ -107,7 +140,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             setProfile(effectiveProfile);
-            localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(effectiveProfile));
             localStorage.setItem(`jadwali_profile_${session.user.id}`, JSON.stringify(effectiveProfile));
 
             try {
@@ -124,7 +156,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     checkSupabaseSession();
 
-    // الاستماع لتغييرات المصادقة (مثل العودة من Google OAuth)
+    // الاستماع لتغييرات المصادقة (دخول جديد، تبديل حساب، أو خروج)
     if (isSupabaseConfigured) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_IN' && session?.user) {
@@ -140,13 +172,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (profData) {
             setProfile(profData as Profile);
-            localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(profData));
+            localStorage.setItem(`jadwali_profile_${session.user.id}`, JSON.stringify(profData));
+          } else {
+            const saved = localStorage.getItem(`jadwali_profile_${session.user.id}`);
+            if (saved) {
+              setProfile(JSON.parse(saved));
+            } else {
+              const newProf: Profile = {
+                id: session.user.id,
+                full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || authUser.email.split('@')[0],
+                academic_id: session.user.user_metadata?.academic_id || '',
+                email: authUser.email,
+                university: 'جامعة الملك عبدالعزيز',
+                major: 'علوم الحاسب',
+                gpa_type: '5',
+                gpa_value: 4.5,
+                term_start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+                term_end_date: new Date(new Date().getFullYear(), new Date().getMonth() + 4, 25).toISOString().split('T')[0],
+                created_at: new Date().toISOString()
+              };
+              setProfile(newProf);
+              localStorage.setItem(`jadwali_profile_${session.user.id}`, JSON.stringify(newProf));
+              try {
+                await supabase.from('profiles').upsert(newProf);
+              } catch (e) {
+                console.warn('New auth profile upsert note:', e);
+              }
+            }
           }
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
           setProfile(null);
           localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
-          localStorage.removeItem(LOCAL_STORAGE_PROFILE_KEY);
+          cleanupLegacyGlobalStorage();
         }
       });
 
@@ -239,17 +297,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (profData) {
             effectiveProfile = profData as Profile;
           } else {
-            const saved = 
-              localStorage.getItem(`jadwali_profile_${userId}`) ||
-              localStorage.getItem(LOCAL_STORAGE_PROFILE_KEY);
-
+            const saved = localStorage.getItem(`jadwali_profile_${userId}`);
             if (saved) {
               effectiveProfile = { ...JSON.parse(saved), id: userId };
             } else {
               effectiveProfile = {
                 id: userId,
                 full_name: data.user.user_metadata?.full_name || userEmail.split('@')[0] || 'طالب جامعي',
-                academic_id: data.user.user_metadata?.academic_id || cleanIdentifier || '44100000',
+                academic_id: data.user.user_metadata?.academic_id || cleanIdentifier || '',
                 email: userEmail,
                 university: 'جامعة الملك عبدالعزيز',
                 major: 'علوم الحاسب',
@@ -268,7 +323,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           setProfile(effectiveProfile);
-          localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(effectiveProfile));
           localStorage.setItem(`jadwali_profile_${userId}`, JSON.stringify(effectiveProfile));
           
           if (effectiveProfile.academic_id) {
@@ -280,10 +334,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // تسجيل الدخول المحلي
-      const savedProf = 
-        localStorage.getItem(`jadwali_prof_${cleanIdentifier}`) ||
-        localStorage.getItem(LOCAL_STORAGE_PROFILE_KEY);
+      // تسجيل الدخول المحلي المعزول
+      const savedProf = localStorage.getItem(`jadwali_prof_${cleanIdentifier}`);
 
       if (savedProf) {
         const parsed = JSON.parse(savedProf);
@@ -291,7 +343,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(authUser);
         setProfile(parsed);
         localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(authUser));
-        localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(parsed));
+        localStorage.setItem(`jadwali_profile_${authUser.id}`, JSON.stringify(parsed));
         setIsLoading(false);
         return { success: true };
       }
@@ -367,7 +419,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(authUser);
       setProfile(newProfile);
       localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(authUser));
-      localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(newProfile));
       localStorage.setItem(`jadwali_profile_${userId}`, JSON.stringify(newProfile));
       localStorage.setItem(`jadwali_academic_map_${data.academic_id.trim()}`, data.email.trim());
       localStorage.setItem(`jadwali_prof_${data.academic_id.trim()}`, JSON.stringify(newProfile));
@@ -392,13 +443,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const mockGoogleUser = { id: `google-${Date.now()}`, email: 'student.google@kau.edu.sa' };
         const mockProfile: Profile = {
           id: mockGoogleUser.id,
-          full_name: 'طالب جامعي',
-          academic_id: '44501928',
+          full_name: 'طالب جامعي جديد',
+          academic_id: '',
           email: mockGoogleUser.email,
           university: 'جامعة الملك عبدالعزيز',
           major: 'علوم الحاسب',
           gpa_type: '5',
-          gpa_value: 4.85,
+          gpa_value: 4.5,
           term_start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
           term_end_date: new Date(new Date().getFullYear(), new Date().getMonth() + 4, 25).toISOString().split('T')[0],
           created_at: new Date().toISOString()
@@ -406,7 +457,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(mockGoogleUser);
         setProfile(mockProfile);
         localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mockGoogleUser));
-        localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(mockProfile));
+        localStorage.setItem(`jadwali_profile_${mockGoogleUser.id}`, JSON.stringify(mockProfile));
         setIsLoading(false);
         return { success: true };
       }
@@ -444,13 +495,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setProfile(null);
       localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
-      localStorage.removeItem(LOCAL_STORAGE_PROFILE_KEY);
+      cleanupLegacyGlobalStorage();
       setIsLoading(false);
     }
   };
 
   const updateProfile = async (updates: Partial<Profile>): Promise<boolean> => {
-    if (!profile) return false;
+    if (!profile || !user) return false;
     try {
       const updated: Profile = {
         ...profile,
@@ -458,16 +509,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       setProfile(updated);
-      localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(updated));
-      if (user) {
-        localStorage.setItem(`jadwali_profile_${user.id}`, JSON.stringify(updated));
-      }
+      localStorage.setItem(`jadwali_profile_${user.id}`, JSON.stringify(updated));
+
       if (updated.academic_id && (updated.email || user?.email)) {
-        localStorage.setItem(`jadwali_academic_map_${updated.academic_id}`, updated.email || user!.email);
+        localStorage.setItem(`jadwali_academic_map_${updated.academic_id}`, updated.email || user.email);
       }
 
-      if (isSupabaseConfigured && (profile.id || user?.id)) {
-        const targetId = profile.id || user?.id;
+      if (isSupabaseConfigured && (profile.id || user.id)) {
+        const targetId = profile.id || user.id;
         const profilePayload = {
           ...updated,
           id: targetId
