@@ -620,6 +620,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .upsert(profilePayload);
 
       if (upsertErr) {
+        // خطأ 23505 = unique constraint violation - الرقم الجامعي مستخدم من حساب آخر
+        // (RLS تمنع رؤية الصف الآخر في التحقق الأولي)
+        const isUniqueViolation =
+          upsertErr.code === '23505' ||
+          upsertErr.message?.toLowerCase().includes('unique') ||
+          upsertErr.message?.toLowerCase().includes('duplicate');
+
+        if (isUniqueViolation) {
+          return {
+            success: false,
+            error: 'هذا الرقم الجامعي مرتبط بحساب آخر. تواصل مع المطور أو حاول تسجيل الدخول بالحساب الآخر.'
+          };
+        }
         return { success: false, error: `فشل حفظ البيانات: ${upsertErr.message}` };
       }
 
