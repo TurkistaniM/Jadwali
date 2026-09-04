@@ -21,12 +21,23 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   isSessionChecked: boolean; // true بعد ما يتم التحقق من الجلسة في Supabase
+  needsOnboarding: boolean;  // true إذا المستخدم مسجل لكن لم يكمل بياناته بعد
   error: string | null;
   signIn: (identifier: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (data: SignUpData) => Promise<{ success: boolean; error?: string }>;
   signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   updateProfile: (data: Partial<Profile>) => Promise<boolean>;
+  completeOnboarding: (data: {
+    full_name: string;
+    academic_id: string;
+    university: string;
+    major: string;
+    gpa_type: GpaType;
+    gpa_value: number;
+    term_start_date: string;
+    term_end_date: string;
+  }) => Promise<{ success: boolean; error?: string }>;
   resetPassword: (email: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   clearError: () => void;
 }
@@ -67,6 +78,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSessionChecked, setIsSessionChecked] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // دالة للتحقق إذا كانت بيانات الملف الشخصي مكتملة
+  const isProfileComplete = (p: Profile | null): boolean => {
+    if (!p) return false;
+    return Boolean(
+      p.academic_id?.trim() &&
+      p.university?.trim() &&
+      p.major?.trim()
+    );
+  };
+
+  // needsOnboarding = مسجل دخول لكن بياناته ناقصة
+  const needsOnboarding = Boolean(user && isSessionChecked && !isProfileComplete(profile));
 
   // دالة موحدة لقراءة وتجهيز الملف الشخصي من Supabase
   const mapSupabaseProfile = (data: any, userId: string, email: string): Profile => {
@@ -548,6 +572,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearError = () => setError(null);
 
+  // إكمال بيانات الحساب بعد التسجيل (Onboarding)
+  const completeOnboarding = async (data: {
+    full_name: string;
+    academic_id: string;
+    university: string;
+    major: string;
+    gpa_type: GpaType;
+    gpa_value: number;
+    term_start_date: string;
+    term_end_date: string;
+  }): Promise<{ success: boolean; error?: string }> => {
+    if (!user) return { success: false, error: 'المستخدم غير مسجل الدخول' };
+
+    try {
+      // 1. تحقق: هل الرقم الجامعي مستخدم من حساب آخر؟
+      const { data: existing } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('academic_id', data.academic_id.trim())
+        .neq('id', user.id)
+        .maybeSingle();
+
+      if (existing) {
+        return {
+          success: false,
+          error: 'هذا الرقم الجامعي مرتبط بحساب آخر. تواصل مع المطور أو حاول تسجيل الدخول بالحساب الآخر.'
+        };
+      }
+
+      // 2. حفظ البيانات في Supabase
+      const profilePayload = {
+        id: user.id,
+        full_name: data.full_name.trim(),
+        academic_id: data.academic_id.trim(),
+        email: user.email,
+        university: data.university.trim(),
+        major: data.major.trim(),
+        gpa_type: data.gpa_type,
+        gpa_value: data.gpa_value,
+        term_start_date: data.term_start_date,
+        term_end_date: data.term_end_date,
+      };
+
+      const { error: upsertErr } = await supabase
+        .from('profiles')
+        .upsert(profilePayload);
+
+      if (upsertErr) {
+        return { success: false, error: `فشل حفظ البيانات: ${upsertErr.message}` };
+      }
+
+      // 3. تحديث الـ state المحلي
+      const updatedProfile: Profile = {
+        ...profilePayload,
+        created_at: profile?.created_at || new Date().toISOString()
+      };
+      setProfile(updatedProfile);
+      localStorage.setItem(`jadwali_profile_${user.id}`, JSON.stringify(updatedProfile));
+      localStorage.setItem(`jadwali_academic_map_${data.academic_id.trim()}`, user.email);
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'حدث خطأ غير متوقع، يرجى المحاولة مجدداً' };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -556,12 +646,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: Boolean(user),
         isLoading,
         isSessionChecked,
+        needsOnboarding,
         error,
         signIn,
         signUp,
         signInWithGoogle,
         signOut,
         updateProfile,
+        completeOnboarding,
         resetPassword,
         clearError,
       }}

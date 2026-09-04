@@ -11,6 +11,7 @@ import { Toast } from './components/common/Toast';
 import { SkeletonLoader } from './components/common/SkeletonLoader';
 
 import { AuthPage } from './components/auth/AuthPage';
+import { OnboardingPage } from './components/auth/OnboardingPage';
 import { HomeDashboard } from './components/dashboard/HomeDashboard';
 import { ProfileView } from './components/profile/ProfileView';
 import { CoursesView } from './components/courses/CoursesView';
@@ -23,7 +24,7 @@ import { AuthModal } from './components/auth/AuthModal';
 import { NotificationsModal } from './components/notifications/NotificationsModal';
 
 const MainLayout: React.FC = () => {
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading, isSessionChecked, needsOnboarding } = useAuth();
   const { isLoadingData } = useData();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
@@ -40,21 +41,30 @@ const MainLayout: React.FC = () => {
       {/* 1. Top Offline Warning Banner */}
       <OfflineBanner />
 
-      {/* 2. Top Navigation Header */}
-      <Header
-        onOpenAuth={(mode) => setAuthModalState({ isOpen: true, mode })}
-        onOpenNotifications={() => setIsNotificationsOpen(true)}
-        onToggleSidebar={() => setIsSidebarOpen(prev => !prev)}
-        onNavigateTab={(tab) => setActiveTab(tab)}
-      />
+      {/* 2. Top Navigation Header — shown always except on onboarding */}
+      {!needsOnboarding && (
+        <Header
+          onOpenAuth={(mode) => setAuthModalState({ isOpen: true, mode })}
+          onOpenNotifications={() => setIsNotificationsOpen(true)}
+          onToggleSidebar={() => setIsSidebarOpen(prev => !prev)}
+          onNavigateTab={(tab) => setActiveTab(tab)}
+        />
+      )}
 
-      {/* 3. Main Content: When Not Authenticated -> Show AuthPage Only */}
+      {/* 3a. Not authenticated → Auth page */}
       {!isAuthenticated ? (
         <main className="flex-1 flex flex-col justify-center">
           <AuthPage />
         </main>
+
+      /* 3b. Authenticated but profile incomplete → Onboarding (إجباري) */
+      ) : isSessionChecked && needsOnboarding ? (
+        <main className="flex-1">
+          <OnboardingPage />
+        </main>
+
+      /* 3c. Fully authenticated → Main portal */
       ) : (
-        /* When Authenticated -> Full Student Portal Experience */
         <div className="flex-1 flex max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 gap-6">
           
           {/* Main Views Area */}
