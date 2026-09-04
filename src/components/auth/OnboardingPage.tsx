@@ -10,13 +10,13 @@ export const OnboardingPage: React.FC = () => {
   const { user, profile, completeOnboarding, signOut } = useAuth();
 
   const [fullName, setFullName] = useState(profile?.full_name || "");
-  const [academicId, setAcademicId] = useState("");
-  const [university, setUniversity] = useState("");
-  const [major, setMajor] = useState("");
-  const [gpaType, setGpaType] = useState<GpaType>("5");
-  const [gpaValue, setGpaValue] = useState("");
-  const [termStartDate, setTermStartDate] = useState("2026-08-23");
-  const [termEndDate, setTermEndDate] = useState("2026-12-17");
+  const [academicId, setAcademicId] = useState(profile?.academic_id || "");
+  const [university, setUniversity] = useState(profile?.university || "");
+  const [major, setMajor] = useState(profile?.major || "");
+  const [gpaType, setGpaType] = useState<GpaType>(profile?.gpa_type || "5");
+  const [gpaValue, setGpaValue] = useState(profile?.gpa_value ? String(profile.gpa_value) : "");
+  const [termStartDate, setTermStartDate] = useState(profile?.term_start_date || "2026-08-23");
+  const [termEndDate, setTermEndDate] = useState(profile?.term_end_date || "2026-12-17");
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -26,18 +26,18 @@ export const OnboardingPage: React.FC = () => {
 
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
-    if (!fullName.trim()) errs.fullName = "ÇáÇÓã ÇáßÇãá ãØáæÈ";
-    if (!academicId.trim()) errs.academicId = "ÇáÑŞã ÇáÌÇãÚí ãØáæÈ";
-    if (!university.trim()) errs.university = "ÇÓã ÇáÌÇãÚÉ ãØáæÈ";
-    if (!major.trim()) errs.major = "ÇáÊÎÕÕ ãØáæÈ";
+    if (!fullName.trim()) errs.fullName = "Ø§Ù„Ø§Ø³Ù… Ø§Ù„ÙƒØ§Ù…Ù„ Ù…Ø·Ù„ÙˆØ¨";
+    if (!academicId.trim()) errs.academicId = "Ø§Ù„Ø±Ù‚Ù… Ø§Ù„Ø¬Ø§Ù…Ø¹ÙŠ Ù…Ø·Ù„ÙˆØ¨";
+    if (!university.trim()) errs.university = "Ø§Ø³Ù… Ø§Ù„Ø¬Ø§Ù…Ø¹Ø© Ù…Ø·Ù„ÙˆØ¨";
+    if (!major.trim()) errs.major = "Ø§Ù„ØªØ®ØµØµ Ù…Ø·Ù„ÙˆØ¨";
     const gpaNum = parseFloat(gpaValue);
     if (!gpaValue || isNaN(gpaNum) || gpaNum < 0 || gpaNum > gpaMax) {
-      errs.gpaValue = `ÇáãÚÏá íÌÈ Ãä íßæä Èíä 0 æ ${gpaMax}`;
+      errs.gpaValue = `Ø§Ù„Ù…Ø¹Ø¯Ù„ ÙŠØ¬Ø¨ Ø§Ù† ÙŠÙƒÙˆÙ† Ø¨ÙŠÙ† 0 Ùˆ ${gpaMax}`;
     }
-    if (!termStartDate) errs.termStartDate = "ÊÇÑíÎ ÈÏÇíÉ ÇáİÕá ãØáæÈ";
-    if (!termEndDate) errs.termEndDate = "ÊÇÑíÎ äåÇíÉ ÇáİÕá ãØáæÈ";
+    if (!termStartDate) errs.termStartDate = "ØªØ§Ø±ÙŠØ® Ø¨Ø¯Ø§ÙŠØ© Ø§Ù„ÙØµÙ„ Ù…Ø·Ù„ÙˆØ¨";
+    if (!termEndDate) errs.termEndDate = "ØªØ§Ø±ÙŠØ® Ù†Ù‡Ø§ÙŠØ© Ø§Ù„ÙØµÙ„ Ù…Ø·Ù„ÙˆØ¨";
     if (termStartDate && termEndDate && termEndDate <= termStartDate) {
-      errs.termEndDate = "ÊÇÑíÎ ÇáäåÇíÉ íÌÈ Ãä íßæä ÈÚÏ ÊÇÑíÎ ÇáÈÏÇíÉ";
+      errs.termEndDate = "ØªØ§Ø±ÙŠØ® Ø§Ù„Ù†Ù‡Ø§ÙŠØ© ÙŠØ¬Ø¨ Ø§Ù† ÙŠÙƒÙˆÙ† Ø¨Ø¹Ø¯ ØªØ§Ø±ÙŠØ® Ø§Ù„Ø¨Ø¯Ø§ÙŠØ©";
     }
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
@@ -59,70 +59,65 @@ export const OnboardingPage: React.FC = () => {
       term_end_date: termEndDate,
     });
     setIsSubmitting(false);
-    if (!result.success) setSubmitError(result.error || "ÍÏË ÎØÃ ãÇ");
+    if (!result.success) setSubmitError(result.error || "Ø­Ø¯Ø« Ø®Ø·Ø§ Ù…Ø§");
   };
 
-  const isAcademicIdConflict = submitError?.includes("ãÑÊÈØ ÈÍÓÇÈ ÂÎÑ");
+  const isAcademicIdConflict = submitError?.includes("Ù…Ø±ØªØ¨Ø· Ø¨Ø­Ø³Ø§Ø¨");
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-10 px-4 bg-[#0F3040] animate-fade-in">
+    <div className="min-h-screen flex items-center justify-center py-10 px-4 bg-[#0F3040] animate-fade-in" dir="rtl">
       <div className="w-full max-w-xl space-y-6">
 
-        {/* Header */}
         <div className="text-center space-y-3">
           <div className="inline-flex p-3 rounded-3xl bg-[#464858] border-2 border-[#A56F63]/50 text-[#D99B7F] shadow-xl">
             <GraduationCap className="w-10 h-10" />
           </div>
           <div className="space-y-1">
-            <h1 className="text-2xl sm:text-3xl font-black text-white">Ãßãá ãáİß ÇáÔÎÕí</h1>
+            <h1 className="text-2xl sm:text-3xl font-black text-white">Ø§ÙƒÙ…Ù„ Ù…Ù„ÙÙƒ Ø§Ù„Ø´Ø®ØµÙŠ</h1>
             <p className="text-sm text-[#D99B7F] font-bold flex items-center justify-center gap-1.5">
               <Sparkles className="w-4 h-4" />
-              ÎØæÉ ÃÎíÑÉ áÈÏÁ ÇÓÊÎÏÇã ÌóÏúæóáí
+              Ø®Ø·ÙˆØ© Ø§Ø®ÙŠØ±Ø© Ù„Ø¨Ø¯Ø¡ Ø§Ø³ØªØ®Ø¯Ø§Ù… Ø¬Ø¯ÙˆÙ„ÙŠ
             </p>
             <p className="text-xs text-slate-300 max-w-sm mx-auto pt-1">
-              åĞå ÇáÈíÇäÇÊ ÖÑæÑíÉ áÍÓÇÈ äÓÈÉ ÇáÛíÇÈ ÇáãäŞÖíÉ æÚÏÇÏ ÇáãßÇİÃÉ ÈÔßá ÕÍíÍ.
+              Ù‡Ø°Ù‡ Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø¶Ø±ÙˆØ±ÙŠØ© Ù„Ø­Ø³Ø§Ø¨ Ù†Ø³Ø¨Ø© Ø§Ù„ØºÙŠØ§Ø¨ Ø§Ù„Ù…Ù†Ù‚Ø¶ÙŠØ© ÙˆØ¹Ø¯Ø§Ø¯ Ø§Ù„Ù…ÙƒØ§ÙØ§Ø© Ø¨Ø´ÙƒÙ„ ØµØ­ÙŠØ­.
             </p>
           </div>
         </div>
 
-        {/* Email indicator */}
         {user?.email && (
           <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#464858]/60 border border-[#A56F63]/20 text-xs text-slate-300">
             <Mail className="w-3.5 h-3.5 text-[#D99B7F] shrink-0" />
-            <span>ÇáÍÓÇÈ ÇáãÑÊÈØ:</span>
+            <span>Ø§Ù„Ø­Ø³Ø§Ø¨ Ø§Ù„Ù…Ø±ØªØ¨Ø·:</span>
             <span className="font-bold text-white truncate">{user.email}</span>
           </div>
         )}
 
-        {/* Form card */}
         <div className="bg-[#464858] rounded-3xl border-2 border-[#A56F63]/50 p-6 sm:p-8 shadow-2xl">
 
-          {/* Academic ID conflict error */}
           {isAcademicIdConflict && (
             <div className="mb-5 p-4 rounded-2xl bg-rose-950/70 border border-rose-500/50 space-y-2">
               <div className="flex items-start gap-2.5">
                 <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <p className="text-sm font-bold text-rose-200">ÇáÑŞã ÇáÌÇãÚí ãÑÊÈØ ÈÍÓÇÈ ÂÎÑ</p>
+                  <p className="text-sm font-bold text-rose-200">Ø§Ù„Ø±Ù‚Ù… Ø§Ù„Ø¬Ø§Ù…Ø¹ÙŠ Ù…Ø±ØªØ¨Ø· Ø¨Ø­Ø³Ø§Ø¨ Ø¢Ø®Ø±</p>
                   <p className="text-xs text-rose-300">
-                    ÇáÑŞã ÇáÌÇãÚí <span className="font-bold text-white">{academicId}</span> ãÓÌá ãÚ ÍÓÇÈ ÂÎÑ İí ÇáãäÕÉ.
+                    Ø§Ù„Ø±Ù‚Ù… Ø§Ù„Ø¬Ø§Ù…Ø¹ÙŠ <span className="font-bold text-white">{academicId}</span> Ù…Ø³Ø¬Ù„ Ù…Ø¹ Ø­Ø³Ø§Ø¨ Ø¢Ø®Ø± ÙÙŠ Ø§Ù„Ù…Ù†ØµØ©.
                   </p>
                 </div>
               </div>
               <div className="pt-2 border-t border-rose-500/30 space-y-1.5 text-xs text-rose-200">
                 <p className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
-                  åá ÓÈŞ Ãä ÓÌáÊ ÈÅíãíá ÂÎÑ¿ ÓÌøá ÇáÎÑæÌ æÇÏÎá ÈÇáÍÓÇÈ ÇáÃæá.
+                  Ù‡Ù„ Ø³Ø¨Ù‚ Ø§Ù† Ø³Ø¬Ù„Øª Ø¨Ø§ÙŠÙ…ÙŠÙ„ Ø¢Ø®Ø±ØŸ Ø³Ø¬Ù„ Ø§Ù„Ø®Ø±ÙˆØ¬ ÙˆØ§Ø¯Ø®Ù„ Ø¨Ø§Ù„Ø­Ø³Ø§Ø¨ Ø§Ù„Ø§ÙˆÙ„.
                 </p>
                 <p className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
-                  ÅĞÇ ßÇä åäÇß ÎØÃ¡ ÊæÇÕá ãÚ ÇáãØæÑ áÍá ÇáãÔßáÉ.
+                  Ø§Ø°Ø§ ÙƒØ§Ù† Ù‡Ù†Ø§Ùƒ Ø®Ø·Ø£ØŒ ØªÙˆØ§ØµÙ„ Ù…Ø¹ Ø§Ù„Ù…Ø·ÙˆØ± Ù„Ø­Ù„ Ø§Ù„Ù…Ø´ÙƒÙ„Ø©.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Other errors */}
           {submitError && !isAcademicIdConflict && (
             <div className="mb-5 p-3.5 rounded-xl bg-rose-950/60 border border-rose-600/50 flex items-center gap-2 text-rose-200 text-xs font-semibold">
               <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
@@ -132,19 +127,18 @@ export const OnboardingPage: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="space-y-4">
 
-            {/* Full Name */}
             <div>
               <label className="block text-xs font-bold text-slate-200 mb-1.5">
                 <span className="flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 text-[#D99B7F]" />
-                  ÇáÇÓã ÇáßÇãá *
+                  Ø§Ù„Ø§Ø³Ù… Ø§Ù„ÙƒØ§Ù…Ù„ *
                 </span>
               </label>
               <input
                 type="text"
                 value={fullName}
                 onChange={(e) => { setFullName(e.target.value); setFieldErrors(p => ({ ...p, fullName: "" })); }}
-                placeholder="ãËÇá: ÚÈÏÇááå ãÍãÏ ÇáÔåÑí"
+                placeholder="Ù…Ø«Ø§Ù„: Ø¹Ø¨Ø¯Ø§Ù„Ù„Ù‡ Ù…Ø­Ù…Ø¯ Ø§Ù„Ø´Ù‡Ø±ÙŠ"
                 className="w-full bg-[#0F3040] border border-[#A56F63]/50 focus:border-[#D99B7F] rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-hidden transition"
               />
               {fieldErrors.fullName && (
@@ -154,29 +148,20 @@ export const OnboardingPage: React.FC = () => {
               )}
             </div>
 
-            {/* Academic ID */}
             <div>
               <label className="block text-xs font-bold text-slate-200 mb-1.5">
                 <span className="flex items-center gap-1.5">
                   <Hash className="w-3.5 h-3.5 text-[#D99B7F]" />
-                  ÇáÑŞã ÇáÌÇãÚí *
-                  <span className="text-[10px] text-slate-400 font-normal">(İÑíÏ áßá ØÇáÈ)</span>
+                  Ø§Ù„Ø±Ù‚Ù… Ø§Ù„Ø¬Ø§Ù…Ø¹ÙŠ *
+                  <span className="text-[10px] text-slate-400 font-normal">(ÙØ±ÙŠØ¯ Ù„ÙƒÙ„ Ø·Ø§Ù„Ø¨)</span>
                 </span>
               </label>
               <input
                 type="text"
                 value={academicId}
-                onChange={(e) => {
-                  setAcademicId(e.target.value);
-                  setFieldErrors(p => ({ ...p, academicId: "" }));
-                  setSubmitError(null);
-                }}
-                placeholder="ãËÇá: 44100234"
-                className={`w-full bg-[#0F3040] border rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-hidden transition ${
-                  fieldErrors.academicId || isAcademicIdConflict
-                    ? "border-rose-500/70"
-                    : "border-[#A56F63]/50 focus:border-[#D99B7F]"
-                }`}
+                onChange={(e) => { setAcademicId(e.target.value); setFieldErrors(p => ({ ...p, academicId: "" })); setSubmitError(null); }}
+                placeholder="Ù…Ø«Ø§Ù„: 44100234"
+                className={"w-full bg-[#0F3040] border rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-hidden transition " + (fieldErrors.academicId || isAcademicIdConflict ? "border-rose-500/70" : "border-[#A56F63]/50 focus:border-[#D99B7F]")}
               />
               {fieldErrors.academicId && (
                 <p className="text-[11px] text-rose-300 mt-1 flex items-center gap-1">
@@ -185,19 +170,18 @@ export const OnboardingPage: React.FC = () => {
               )}
             </div>
 
-            {/* University + Major */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-200 mb-1.5">
                   <span className="flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-[#D99B7F]" />ÇáÌÇãÚÉ *
+                    <Building2 className="w-3.5 h-3.5 text-[#D99B7F]" />Ø§Ù„Ø¬Ø§Ù…Ø¹Ø© *
                   </span>
                 </label>
                 <input
                   type="text"
                   value={university}
                   onChange={(e) => { setUniversity(e.target.value); setFieldErrors(p => ({ ...p, university: "" })); }}
-                  placeholder="ÌÇãÚÉ Çáãáß ÚÈÏÇáÚÒíÒ"
+                  placeholder="Ø¬Ø§Ù…Ø¹Ø© Ø§Ù„Ù…Ù„Ùƒ Ø¹Ø¨Ø¯Ø§Ù„Ø¹Ø²ÙŠØ²"
                   className="w-full bg-[#0F3040] border border-[#A56F63]/50 focus:border-[#D99B7F] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-400 outline-hidden transition"
                 />
                 {fieldErrors.university && <p className="text-[11px] text-rose-300 mt-1">{fieldErrors.university}</p>}
@@ -205,40 +189,39 @@ export const OnboardingPage: React.FC = () => {
               <div>
                 <label className="block text-xs font-bold text-slate-200 mb-1.5">
                   <span className="flex items-center gap-1.5">
-                    <BookOpen className="w-3.5 h-3.5 text-[#D99B7F]" />ÇáÊÎÕÕ *
+                    <BookOpen className="w-3.5 h-3.5 text-[#D99B7F]" />Ø§Ù„ØªØ®ØµØµ *
                   </span>
                 </label>
                 <input
                   type="text"
                   value={major}
                   onChange={(e) => { setMajor(e.target.value); setFieldErrors(p => ({ ...p, major: "" })); }}
-                  placeholder="åäÏÓÉ ÇáÈÑãÌíÇÊ"
+                  placeholder="Ù‡Ù†Ø¯Ø³Ø© Ø§Ù„Ø¨Ø±Ù…Ø¬ÙŠØ§Øª"
                   className="w-full bg-[#0F3040] border border-[#A56F63]/50 focus:border-[#D99B7F] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-400 outline-hidden transition"
                 />
                 {fieldErrors.major && <p className="text-[11px] text-rose-300 mt-1">{fieldErrors.major}</p>}
               </div>
             </div>
 
-            {/* GPA */}
             <div className="p-3.5 rounded-xl bg-[#0F3040]/70 border border-[#A56F63]/30 space-y-3">
               <p className="text-[11px] font-bold text-[#D99B7F] flex items-center gap-1.5">
-                <TrendingUp className="w-3.5 h-3.5" />ÇáãÚÏá ÇáÊÑÇßãí
+                <TrendingUp className="w-3.5 h-3.5" />Ø§Ù„Ù…Ø¹Ø¯Ù„ Ø§Ù„ØªØ±Ø§ÙƒÙ…ÙŠ
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] text-slate-300 mb-1">äÙÇã ÇáãÚÏá</label>
+                  <label className="block text-[10px] text-slate-300 mb-1">Ù†Ø¸Ø§Ù… Ø§Ù„Ù…Ø¹Ø¯Ù„</label>
                   <select
                     value={gpaType}
                     onChange={(e) => { setGpaType(e.target.value as GpaType); setGpaValue(""); }}
                     className="w-full bg-[#464858] border border-[#A56F63]/40 rounded-xl px-3 py-2 text-xs text-white outline-hidden"
                   >
-                    <option value="5">ãä 5.00 (ÇáÌÇãÚÇÊ ÇáÓÚæÏíÉ)</option>
-                    <option value="4">ãä 4.00 (äÙÇã ÇáÜ 4 äŞÇØ)</option>
-                    <option value="100">ãÆæí % (100)</option>
+                    <option value="5">Ù…Ù† 5.00 (Ø§Ù„Ø¬Ø§Ù…Ø¹Ø§Øª Ø§Ù„Ø³Ø¹ÙˆØ¯ÙŠØ©)</option>
+                    <option value="4">Ù…Ù† 4.00 (Ù†Ø¸Ø§Ù… 4 Ù†Ù‚Ø§Ø·)</option>
+                    <option value="100">Ù…Ø¦ÙˆÙŠ % (100)</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-300 mb-1">ŞíãÉ ÇáãÚÏá (0 – {gpaMax})</label>
+                  <label className="block text-[10px] text-slate-300 mb-1">Ù‚ÙŠÙ…Ø© Ø§Ù„Ù…Ø¹Ø¯Ù„ (0 - {gpaMax})</label>
                   <input
                     type="number"
                     step="0.01"
@@ -254,14 +237,13 @@ export const OnboardingPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Term Dates */}
             <div className="p-3.5 rounded-xl bg-[#0F3040]/70 border border-[#A56F63]/30 space-y-3">
               <p className="text-[11px] font-bold text-[#D99B7F] flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5" />ÊæÇÑíÎ ÇáİÕá ÇáÏÑÇÓí (áÍÓÇÈ ÇáÛíÇÈ ÇáãäŞÖí)
+                <Calendar className="w-3.5 h-3.5" />ØªÙˆØ§Ø±ÙŠØ® Ø§Ù„ÙØµÙ„ Ø§Ù„Ø¯Ø±Ø§Ø³ÙŠ (Ù„Ø­Ø³Ø§Ø¨ Ø§Ù„ØºÙŠØ§Ø¨ Ø§Ù„Ù…Ù†Ù‚Ø¶ÙŠ)
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] text-slate-300 mb-1">ÈÏÇíÉ ÇáİÕá *</label>
+                  <label className="block text-[10px] text-slate-300 mb-1">Ø¨Ø¯Ø§ÙŠØ© Ø§Ù„ÙØµÙ„ *</label>
                   <input
                     type="date"
                     value={termStartDate}
@@ -271,7 +253,7 @@ export const OnboardingPage: React.FC = () => {
                   {fieldErrors.termStartDate && <p className="text-[11px] text-rose-300 mt-1">{fieldErrors.termStartDate}</p>}
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-300 mb-1">äåÇíÉ ÇáİÕá *</label>
+                  <label className="block text-[10px] text-slate-300 mb-1">Ù†Ù‡Ø§ÙŠØ© Ø§Ù„ÙØµÙ„ *</label>
                   <input
                     type="date"
                     value={termEndDate}
@@ -283,17 +265,16 @@ export const OnboardingPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={isSubmitting}
               className="w-full py-3.5 rounded-xl bg-[#A56F63] hover:bg-[#8E584D] text-white font-bold text-sm transition shadow-lg flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-60"
             >
               {isSubmitting ? (
-                <span>ÌÇÑí ÇáÍİÙ...</span>
+                <span>Ø¬Ø§Ø±ÙŠ Ø§Ù„Ø­ÙØ¸...</span>
               ) : (
                 <>
-                  <span>ÍİÙ ÇáãÚáæãÇÊ æÇáÈÏÁ</span>
+                  <span>Ø­ÙØ¸ Ø§Ù„Ù…Ø¹Ù„ÙˆÙ…Ø§Øª ÙˆØ§Ù„Ø¨Ø¯Ø¡</span>
                   <ArrowLeft className="w-4 h-4" />
                 </>
               )}
@@ -301,7 +282,6 @@ export const OnboardingPage: React.FC = () => {
           </form>
         </div>
 
-        {/* Sign out */}
         <div className="text-center">
           <button
             type="button"
@@ -309,7 +289,7 @@ export const OnboardingPage: React.FC = () => {
             className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition"
           >
             <LogOut className="w-3.5 h-3.5" />
-            ÊÓÌíá ÇáÎÑæÌ æÇÓÊÎÏÇã ÍÓÇÈ ÂÎÑ
+            ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø®Ø±ÙˆØ¬ ÙˆØ§Ø³ØªØ®Ø¯Ø§Ù… Ø­Ø³Ø§Ø¨ Ø¢Ø®Ø±
           </button>
         </div>
 
